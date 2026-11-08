@@ -120,6 +120,17 @@ jobs:
           cmake --build build/release --target yuzu yuzu-cmd --parallel
           ccache --show-stats || true
 
+      # Keep the compiled programs even if the AppImage packaging fails afterwards:
+      # a packaging bug must not throw away a 30-minute build.
+      - name: Upload the raw binaries as a fallback
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firefly-linux-x86_64-pgo-binaries
+          path: src-tree/build/release/bin/
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Package the AppImage
         working-directory: src-tree
         run: |
