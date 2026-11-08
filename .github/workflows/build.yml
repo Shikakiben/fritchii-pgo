@@ -23,6 +23,8 @@ env:
   # clang major that can read eglantine.profdata (profile format version 14).
   # LLVM 21/22 cannot: they read versions 12/13.
   PGO_LLVM_VERSION: "23"
+  # Keep the object cache inside the workspace so it can be saved between runs.
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
 
 jobs:
   build:
@@ -37,6 +39,15 @@ jobs:
           ref: ${{ inputs.ref }}
           path: src-tree
 
+      - name: Restore the compiler cache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ inputs.upstream }}-${{ inputs.ref }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ inputs.upstream }}-${{ inputs.ref }}-
+            ccache-
+
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
@@ -44,13 +55,17 @@ jobs:
             autoconf cmake g++ gcc git glslang-tools libglu1-mesa-dev \
             libpulse-dev libtool libudev-dev libxkbcommon-x11-0 \
             mesa-common-dev nasm ninja-build qt6-base-private-dev \
-            qt6-charts-dev qt6-tools-dev qt6-base-dev-tools libavfilter-dev libavcodec-dev \
+            qt6-charts-dev qt6-tools-dev qt6-base-dev-tools qt6-wayland qt6-wayland-dev \
+            libavfilter-dev libavcodec-dev \
             libswscale-dev pkg-config zlib1g-dev libva-dev libvdpau-dev \
             spirv-tools spirv-headers libusb-1.0-0-dev \
             libboost-dev libboost-fiber-dev libboost-context-dev \
             libopus-dev libasound2-dev ccache \
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
             libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1
+          # The AppImage step asks linuxdeploy for the Wayland platform plugins.
+          test -f /usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/libqwayland-egl.so \
+            || { echo "missing Qt Wayland plugin"; exit 1; }
 
       - name: Install clang for PGO
         run: |
@@ -124,8 +139,14 @@ jobs:
           export APPIMAGE_EXTRACT_AND_RUN=1
           # No install-qt-action here, so point the Qt plugin at the system qmake.
           export QMAKE="$(command -v qmake6 || command -v qmake || echo /usr/lib/qt6/bin/qmake)"
-          export EXTRA_QT_MODULES=waylandcompositor
-          export EXTRA_PLATFORM_PLUGINS='libqwayland-egl.so;libqwayland-generic.so'
+          qt_platforms=/usr/lib/x86_64-linux-gnu/qt6/plugins/platforms
+          if [ -f "$qt_platforms/libqwayland-egl.so" ] && [ -f "$qt_platforms/libqwayland-generic.so" ]; then
+            export EXTRA_QT_MODULES=waylandcompositor
+            export EXTRA_PLATFORM_PLUGINS='libqwayland-egl.so;libqwayland-generic.so'
+          else
+            # Never fail the packaging over an optional platform plugin: ship X11-only instead.
+            echo "::warning::Qt Wayland plugins missing; packaging without them"
+          fi
           export LDAI_VERSION="build-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
           export LDAI_OUTPUT="firefly-linux-x86_64-pgo.AppImage"
           export OUTPUT="$LDAI_OUTPUT"
