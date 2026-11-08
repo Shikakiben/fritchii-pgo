@@ -18,8 +18,20 @@ on:
           - vendichii
           - fritchii
         default: firefly
-      ref:
-        description: "Branch, tag or commit (empty = the project's default)"
+      branch:
+        description: "Branch (the list is the real one at the time of writing)"
+        type: choice
+        options:
+          - "(project default)"
+          - main
+          - nx2
+          - hotfix/v4.1
+          - oot-gather-fix
+          - test/no-sky-fold
+          - "other (type it below)"
+        default: "(project default)"
+      ref_custom:
+        description: "Other branch, tag or commit — used when branch is 'other'"
         type: string
         default: ""
       upstream:
@@ -48,7 +60,8 @@ jobs:
         shell: bash
         env:
           PROJECT: ${{ inputs.project }}
-          REF: ${{ inputs.ref }}
+          BRANCH: ${{ inputs.branch }}
+          REF_CUSTOM: ${{ inputs.ref_custom }}
           UPSTREAM: ${{ inputs.upstream }}
         run: |
           set -euo pipefail
@@ -62,7 +75,14 @@ jobs:
             repo="$UPSTREAM"
             default_ref="main"
           fi
-          ref="${REF:-$default_ref}"
+          case "$BRANCH" in
+            "(project default)")   ref="$default_ref" ;;
+            "other (type it below)") ref="$REF_CUSTOM" ;;
+            *)                     ref="$BRANCH" ;;
+          esac
+          if [ -z "$ref" ]; then
+            echo "no branch: pick one, or fill 'ref_custom' with branch/tag/commit"; exit 1
+          fi
           name="$(basename "$repo" | tr '[:upper:]' '[:lower:]')"
           # Timestamp of the build in Paris time, so two builds of the same commit are
           # told apart: 20261108-1755
@@ -71,7 +91,7 @@ jobs:
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "stamp=$stamp" >> "$GITHUB_OUTPUT"
-          echo "building $repo @ $ref as $name ($stamp UTC)"
+          echo "building $repo @ $ref as $name ($stamp Paris)"
 
       - name: Check out upstream source
         uses: actions/checkout@v5

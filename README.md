@@ -17,9 +17,24 @@ that checks out their source and runs the same build their CI runs, with `eglant
 
 Actions → **oot-emulator-linux-pgo** → *Run workflow*:
 
-- `project`: `firefly`, `vendichii` or `fritchii`
-- `ref`: leave empty for the project's default branch, or pass a tag/commit
-- `upstream`: optionally build any other fork (`owner/name`)
+- `project`: `firefly`, `vendichii` or `fritchii` — the repository and its default branch are
+  resolved from this, nothing to type
+- `branch`: dropdown with the branches that exist upstream, or `(project default)`, or
+  `other (type it below)`
+- `ref_custom`: only used when `branch` is `other` — any branch, tag or commit
+- `upstream`: optionally build another fork (`owner/name`)
+
+The dropdown is a static list, because `workflow_dispatch` cannot fill a choice input from the
+API at click time. When upstream adds a branch, add it to the list in `build.yml`; meanwhile
+`other` always works.
+
+| Branch | Firefly | Vendichii | Fritchii |
+|---|---|---|---|
+| `main` | ✅ | ✅ | |
+| `nx2` | | | ✅ (défaut) |
+| `hotfix/v4.1` | | | ✅ |
+| `oot-gather-fix` | | | ✅ |
+| `test/no-sky-fold` | | | ✅ |
 
 When it finishes, download the artifact named
 `<project>-linux-x86_64-pgo-<YYYYMMDD-HHMM>` (Paris time of the run):
