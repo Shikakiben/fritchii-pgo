@@ -64,9 +64,9 @@ jobs:
           fi
           ref="${REF:-$default_ref}"
           name="$(basename "$repo" | tr '[:upper:]' '[:lower:]')"
-          # Timestamp of the build, in UTC, so two builds of the same commit are
+          # Timestamp of the build in Paris time, so two builds of the same commit are
           # told apart: 20261108-1755
-          stamp="$(date -u +%Y%m%d-%H%M)"
+          stamp="$(TZ=Europe/Paris date +%Y%m%d-%H%M)"
           echo "repo=$repo" >> "$GITHUB_OUTPUT"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"

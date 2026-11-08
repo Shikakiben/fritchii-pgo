@@ -22,7 +22,7 @@ Actions → **oot-emulator-linux-pgo** → *Run workflow*:
 - `upstream`: optionally build any other fork (`owner/name`)
 
 When it finishes, download the artifact named
-`<project>-linux-x86_64-pgo-<YYYYMMDD-HHMM>` (UTC time of the run):
+`<project>-linux-x86_64-pgo-<YYYYMMDD-HHMM>` (Paris time of the run):
 
 ```sh
 chmod +x vendichii-linux-x86_64-pgo-20261108-1755.AppImage
