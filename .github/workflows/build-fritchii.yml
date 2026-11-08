@@ -1,0 +1,39 @@
+name: build fritchii
+
+# Fritchii — Frizti/Fritchii
+# Its branch list is here, so it can never be paired with another project.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Fritchii branch"
+        type: choice
+        options:
+          - "default (nx2)"
+          - nx2
+          - hotfix/v4.1
+          - oot-gather-fix
+          - test/no-sky-fold
+          - "other (type below)"
+        default: "default (nx2)"
+      ref_custom:
+        description: "Used when branch is 'other': any branch, tag or commit"
+        type: string
+        default: ""
+      upstream:
+        description: "Optional: another repository, owner/name"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      project: fritchii
+      branch: ${{ inputs.branch }}
+      ref_custom: ${{ inputs.ref_custom }}
+      upstream: ${{ inputs.upstream }}

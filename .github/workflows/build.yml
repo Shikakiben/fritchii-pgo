@@ -1,41 +1,26 @@
-name: oot-emulator-linux-pgo
+name: build (reusable)
 
-# Builds the Linux x86-64 PGO AppImage of an OoT-focused emulator fork:
-# Firefly, Vendichii or Fritchii. The sources are checked out from the
-# upstream repository at run time; this repository only holds this workflow.
-#
-# No game data, keys or firmware are involved: the sources contain the
-# emulator only.
+# Reusable build. Do not run this one directly: it has no dispatch trigger.
+# Use build-firefly.yml, build-vendichii.yml or build-fritchii.yml, whose branch
+# lists match the project they build.
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       project:
-        description: "Project to build"
-        type: choice
-        options:
-          - firefly
-          - vendichii
-          - fritchii
-        default: firefly
+        description: "firefly, vendichii or fritchii"
+        type: string
+        required: true
       branch:
-        description: "Branch (the list is the real one at the time of writing)"
-        type: choice
-        options:
-          - "(project default)"
-          - main
-          - nx2
-          - hotfix/v4.1
-          - oot-gather-fix
-          - test/no-sky-fold
-          - "other (type it below)"
+        description: "Branch chosen in the caller, or (project default) / other (type it below)"
+        type: string
         default: "(project default)"
       ref_custom:
-        description: "Other branch, tag or commit — used when branch is 'other'"
+        description: "Branch, tag or commit used when branch is 'other'"
         type: string
         default: ""
       upstream:
-        description: "Override repository, owner/name (empty = the project's repository)"
+        description: "Override repository, owner/name"
         type: string
         default: ""
 
@@ -76,13 +61,19 @@ jobs:
             default_ref="main"
           fi
           case "$BRANCH" in
-            "(project default)")   ref="$default_ref" ;;
-            "other (type it below)") ref="$REF_CUSTOM" ;;
-            *)                     ref="$BRANCH" ;;
+            default*|"(project default)")      ref="$default_ref" ;;
+            other*|"other (type it below)")    ref="$REF_CUSTOM" ;;
+            *)                                 ref="$BRANCH" ;;
           esac
           if [ -z "$ref" ]; then
             echo "no branch: pick one, or fill 'ref_custom' with branch/tag/commit"; exit 1
           fi
+          # Accept a pasted GitHub URL such as
+          # https://github.com/Frizti/Fritchii/tree/hotfix/v4.1
+          case "$ref" in
+            *github.com/*/tree/*) ref="${ref#*/tree/}" ;;
+            *github.com/*/commit/*) ref="${ref#*/commit/}" ;;
+          esac
           name="$(basename "$repo" | tr '[:upper:]' '[:lower:]')"
           # Timestamp of the build in Paris time, so two builds of the same commit are
           # told apart: 20261108-1755
@@ -92,6 +83,27 @@ jobs:
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "stamp=$stamp" >> "$GITHUB_OUTPUT"
           echo "building $repo @ $ref as $name ($stamp Paris)"
+
+      # Fail here, in seconds, rather than 30 minutes later in the checkout step.
+      - name: Check the branch exists upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ steps.target.outputs.repo }}
+          REF: ${{ steps.target.outputs.ref }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$REPO/branches/$REF" > /dev/null 2>&1; then
+            echo "branch $REF exists in $REPO"
+          elif gh api "repos/$REPO/git/ref/tags/$REF" > /dev/null 2>&1; then
+            echo "tag $REF exists in $REPO"
+          elif gh api "repos/$REPO/commits/$REF" > /dev/null 2>&1; then
+            echo "commit $REF exists in $REPO"
+          else
+            echo "::error::$REF does not exist in $REPO"
+            echo "Branches available in $REPO:"
+            gh api "repos/$REPO/branches?per_page=100" --jq '.[].name' || true
+            exit 1
+          fi
 
       - name: Check out upstream source
         uses: actions/checkout@v5

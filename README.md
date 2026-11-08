@@ -1,51 +1,55 @@
 # OoT emulator forks — Linux PGO AppImages
 
 Builds the Linux x86-64 **PGO AppImage** of the OoT-focused emulator forks, on demand,
-from their upstream sources:
+from their upstream sources.
 
-| Project | Repository | Branch | GUI binary |
+## Three workflows, one per project
+
+Actions → pick the one you want. Each has **its own branch list**, so a branch can never be
+paired with the wrong repository.
+
+| Workflow | Repository | Default branch | Branches in the menu |
 |---|---|---|---|
-| **firefly** | [Kradnah/Firefly](https://github.com/Kradnah/Firefly) | `main` | `firefly` |
-| **vendichii** | [VendavalSC/Vendichii](https://github.com/VendavalSC/Vendichii) | `main` | `lichii` |
-| **fritchii** | [Frizti/Fritchii](https://github.com/Frizti/Fritchii) | `nx2` | `lichii` |
+| **build firefly** | [Kradnah/Firefly](https://github.com/Kradnah/Firefly) | `main` | `main` |
+| **build vendichii** | [VendavalSC/Vendichii](https://github.com/VendavalSC/Vendichii) | `main` | `main` |
+| **build fritchii** | [Frizti/Fritchii](https://github.com/Frizti/Fritchii) | `nx2` | `nx2`, `hotfix/v4.1`, `oot-gather-fix`, `test/no-sky-fold` |
 
-None of them publishes a Linux binary: their releases are Windows-only, even though their
-workflow and the PGO profile are in the repository. This repository holds a single workflow
-that checks out their source and runs the same build their CI runs, with `eglantine.profdata`.
+Every workflow also has:
 
-## Use
+- `ref_custom` — used when the branch is **other**: any branch, tag or commit. A pasted GitHub
+  URL (`https://github.com/Frizti/Fritchii/tree/hotfix/v4.1`) is accepted and reduced to the ref.
+- `upstream` — optional, to build another repository (`owner/name`).
 
-Actions → **oot-emulator-linux-pgo** → *Run workflow*:
+`build.yml` is the shared, reusable job; it has no dispatch trigger and is not meant to be run
+directly.
 
-- `project`: `firefly`, `vendichii` or `fritchii` — the repository and its default branch are
-  resolved from this, nothing to type
-- `branch`: dropdown with the branches that exist upstream, or `(project default)`, or
-  `other (type it below)`
-- `ref_custom`: only used when `branch` is `other` — any branch, tag or commit
-- `upstream`: optionally build another fork (`owner/name`)
+## Why the lists are static
 
-The dropdown is a static list, because `workflow_dispatch` cannot fill a choice input from the
-API at click time. When upstream adds a branch, add it to the list in `build.yml`; meanwhile
-`other` always works.
+`workflow_dispatch` cannot fill a `choice` input from the API when the page is opened: GitHub
+only accepts options written in the workflow file. Splitting into one workflow per project is
+the only way to show a list that matches what is being built. When upstream adds a branch, add
+it to the matching `build-*.yml`; `other` always covers the gap.
 
-| Branch | Firefly | Vendichii | Fritchii |
-|---|---|---|---|
-| `main` | ✅ | ✅ | |
-| `nx2` | | | ✅ (défaut) |
-| `hotfix/v4.1` | | | ✅ |
-| `oot-gather-fix` | | | ✅ |
-| `test/no-sky-fold` | | | ✅ |
+## Safety checks before the 30-minute build
 
-When it finishes, download the artifact named
-`<project>-linux-x86_64-pgo-<YYYYMMDD-HHMM>` (Paris time of the run):
+The first steps run in seconds and stop the run if something is wrong:
+
+- the branch, tag or commit **exists upstream** (`gh api`), otherwise the available branches are
+  printed in the log;
+- `eglantine.profdata` is present in the source.
+
+## Output
+
+Artifact `<project>-linux-x86_64-pgo-<YYYYMMDD-HHMM>` (Paris time), containing the AppImage and
+its `.sha256`:
 
 ```sh
 chmod +x vendichii-linux-x86_64-pgo-20261108-1755.AppImage
 ./vendichii-linux-x86_64-pgo-20261108-1755.AppImage
 ```
 
-The artifact also contains a `.sha256`. If the AppImage packaging fails, the compiled
-binaries are still uploaded as `<project>-linux-x86_64-pgo-binaries-<stamp>`.
+If the AppImage packaging fails, the compiled binaries are still uploaded as
+`<project>-linux-x86_64-pgo-binaries-<stamp>`.
 
 ## Why clang 23
 
