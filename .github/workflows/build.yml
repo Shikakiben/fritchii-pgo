@@ -64,10 +64,14 @@ jobs:
           fi
           ref="${REF:-$default_ref}"
           name="$(basename "$repo" | tr '[:upper:]' '[:lower:]')"
+          # Timestamp of the build, in UTC, so two builds of the same commit are
+          # told apart: 20261108-1755
+          stamp="$(date -u +%Y%m%d-%H%M)"
           echo "repo=$repo" >> "$GITHUB_OUTPUT"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "building $repo @ $ref as $name"
+          echo "stamp=$stamp" >> "$GITHUB_OUTPUT"
+          echo "building $repo @ $ref as $name ($stamp UTC)"
 
       - name: Check out upstream source
         uses: actions/checkout@v5
@@ -164,7 +168,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.target.outputs.name }}-linux-x86_64-pgo-binaries
+          name: ${{ steps.target.outputs.name }}-linux-x86_64-pgo-binaries-${{ steps.target.outputs.stamp }}
           path: src-tree/build/release/bin/
           if-no-files-found: warn
           retention-days: 7
@@ -230,8 +234,9 @@ jobs:
           fi
 
           name="${{ steps.target.outputs.name }}"
-          export LDAI_VERSION="build-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
-          export LDAI_OUTPUT="${name}-linux-x86_64-pgo.AppImage"
+          stamp="${{ steps.target.outputs.stamp }}"
+          export LDAI_VERSION="build-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}-${stamp}"
+          export LDAI_OUTPUT="${name}-linux-x86_64-pgo-${stamp}.AppImage"
           export OUTPUT="$LDAI_OUTPUT"
           export ARCH="$arch"
 
@@ -251,10 +256,10 @@ jobs:
       - name: Upload the AppImage
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.target.outputs.name }}-linux-x86_64-pgo
+          name: ${{ steps.target.outputs.name }}-linux-x86_64-pgo-${{ steps.target.outputs.stamp }}
           path: |
-            src-tree/${{ steps.target.outputs.name }}-linux-x86_64-pgo.AppImage
-            src-tree/${{ steps.target.outputs.name }}-linux-x86_64-pgo.AppImage.sha256
+            src-tree/*.AppImage
+            src-tree/*.AppImage.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 30

@@ -21,15 +21,16 @@ Actions → **oot-emulator-linux-pgo** → *Run workflow*:
 - `ref`: leave empty for the project's default branch, or pass a tag/commit
 - `upstream`: optionally build any other fork (`owner/name`)
 
-When it finishes, download the artifact named `<project>-linux-x86_64-pgo`:
+When it finishes, download the artifact named
+`<project>-linux-x86_64-pgo-<YYYYMMDD-HHMM>` (UTC time of the run):
 
 ```sh
-chmod +x vendichii-linux-x86_64-pgo.AppImage
-./vendichii-linux-x86_64-pgo.AppImage
+chmod +x vendichii-linux-x86_64-pgo-20261108-1755.AppImage
+./vendichii-linux-x86_64-pgo-20261108-1755.AppImage
 ```
 
 The artifact also contains a `.sha256`. If the AppImage packaging fails, the compiled
-binaries are still uploaded as `<project>-linux-x86_64-pgo-binaries`.
+binaries are still uploaded as `<project>-linux-x86_64-pgo-binaries-<stamp>`.
 
 ## Why clang 23
 
