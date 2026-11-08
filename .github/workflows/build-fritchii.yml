@@ -17,6 +17,10 @@ on:
           - test/no-sky-fold
           - "other (type below)"
         default: "default (nx2)"
+      apply_pr_fix:
+        description: "Apply the 'Status' X11 macro fix to vk_pipeline_cache.cpp (needed on hotfix/v4.1)"
+        type: boolean
+        default: false
       ref_custom:
         description: "Used when branch is 'other': any branch, tag or commit"
         type: string
@@ -35,5 +39,6 @@ jobs:
     with:
       project: fritchii
       branch: ${{ inputs.branch }}
+      apply_pr_fix: ${{ inputs.apply_pr_fix }}
       ref_custom: ${{ inputs.ref_custom }}
       upstream: ${{ inputs.upstream }}

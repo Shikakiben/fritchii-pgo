@@ -14,6 +14,12 @@ paired with the wrong repository.
 | **build vendichii** | [VendavalSC/Vendichii](https://github.com/VendavalSC/Vendichii) | `main` | `main` |
 | **build fritchii** | [Frizti/Fritchii](https://github.com/Frizti/Fritchii) | `nx2` | `nx2`, `hotfix/v4.1`, `oot-gather-fix`, `test/no-sky-fold` |
 
+On **Fritchii `hotfix/v4.1`**, set **`apply_pr_fix`**: that branch does not compile on Linux
+(`expected unqualified-id` in `vk_pipeline_cache.cpp`) because `Xlib.h` defines `Status` as a
+macro. The option re-applies the fix from upstream PR #15 — `using MergeStatus =
+decltype(VideoCommon::PipelineCacheMergeResult::status);` and `case MergeStatus::` — which is
+byte-identical to what that PR does.
+
 Every workflow also has:
 
 - `ref_custom` — used when the branch is **other**: any branch, tag or commit. A pasted GitHub

@@ -15,6 +15,10 @@ on:
         description: "Branch chosen in the caller, or (project default) / other (type it below)"
         type: string
         default: "(project default)"
+      apply_pr_fix:
+        description: "Apply the Status X11 macro fix (needed on hotfix/v4.1)"
+        type: string
+        default: "false"
       ref_custom:
         description: "Branch, tag or commit used when branch is 'other'"
         type: string
@@ -111,6 +115,39 @@ jobs:
           repository: ${{ steps.target.outputs.repo }}
           ref: ${{ steps.target.outputs.ref }}
           path: src-tree
+
+      # Xlib.h defines Status as a macro; Qt pulls Xlib.h in on Linux and
+      # vk_pipeline_cache.cpp declares `using Status = ...`, which then fails to
+      # parse. Upstream fixed it in PR #15 (renamed to MergeStatus with decltype);
+      # this re-applies the same change for branches that do not have it yet.
+      - name: Apply the Status macro fix (optional)
+        if: inputs.apply_pr_fix == 'true'
+        working-directory: src-tree
+        run: |
+          set -euo pipefail
+          file=src/video_core/renderer_vulkan/vk_pipeline_cache.cpp
+          if grep -q 'using MergeStatus' "$file"; then
+            echo "fix already present in $file"
+            exit 0
+          fi
+          if ! grep -q 'using Status = VideoCommon::PipelineCacheMergeResult::Status;' "$file"; then
+            echo "::error::expected the 'using Status = ...' line in $file; the branch changed, review the fix"
+            exit 1
+          fi
+          python3 - "$file" <<'PY'
+          import re, sys
+          path = sys.argv[1]
+          src = open(path, encoding='utf-8').read()
+          src = src.replace(
+              "    using Status = VideoCommon::PipelineCacheMergeResult::Status;",
+              "    // decltype: Xlib.h, reached through Qt on Linux, defines Status as a macro.\n"
+              "    using MergeStatus = decltype(VideoCommon::PipelineCacheMergeResult::status);",
+              1)
+          src = re.sub(r"\bcase Status::", "case MergeStatus::", src)
+          open(path, 'w', encoding='utf-8').write(src)
+          PY
+          grep -n 'using MergeStatus\|case MergeStatus::' "$file" | head -10
+          echo "Status macro fix applied"
 
       - name: Restore the compiler cache
         uses: actions/cache@v4
