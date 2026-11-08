@@ -200,6 +200,14 @@ jobs:
           [ -n "$icon" ] || { echo "no icon found"; exit 1; }
           echo "desktop: $desktop   icon: $icon"
 
+          # linuxdeploy looks the icon up by the name in the desktop file's Icon=
+          # entry, so the deployed file must carry that name, not the source name.
+          icon_name="$(sed -n 's/^Icon=//p' "$desktop" | head -n 1)"
+          [ -n "$icon_name" ] || icon_name="$(basename "${icon%.*}")"
+          icon_file="$RUNNER_TEMP/$icon_name.png"
+          cp "$icon" "$icon_file"
+          echo "icon deployed as: $icon_file"
+
           tools="$RUNNER_TEMP/linuxdeploy"
           mkdir -p "$tools"
           arch=$(uname -m)
@@ -208,9 +216,6 @@ jobs:
           curl -fsSL -o "$tools/linuxdeploy-plugin-qt-$arch.AppImage" \
             https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-$arch.AppImage
           chmod +x "$tools"/*.AppImage
-
-          icon_file="$RUNNER_TEMP/$(basename "$icon")"
-          cp "$icon" "$icon_file"
 
           export APPIMAGE_EXTRACT_AND_RUN=1
           # No install-qt-action here, so point the Qt plugin at the system qmake.
