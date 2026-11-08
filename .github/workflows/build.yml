@@ -1,0 +1,153 @@
+name: firefly-linux-pgo
+
+# Builds Firefly's Linux x86-64 PGO AppImage from the upstream sources.
+# No game data, keys or firmware are involved: the sources only contain the
+# emulator, and the resulting binary is the same one upstream's own CI makes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream:
+        description: "Upstream repository (owner/name)"
+        type: string
+        default: Kradnah/Firefly
+      ref:
+        description: "Upstream branch, tag or commit"
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+env:
+  # clang major that can read eglantine.profdata (profile format version 14).
+  # LLVM 21/22 cannot: they read versions 12/13.
+  PGO_LLVM_VERSION: "23"
+
+jobs:
+  build:
+    name: linux-x86_64-pgo
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Check out upstream source
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.upstream }}
+          ref: ${{ inputs.ref }}
+          path: src-tree
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf cmake g++ gcc git glslang-tools libglu1-mesa-dev \
+            libpulse-dev libtool libudev-dev libxkbcommon-x11-0 \
+            mesa-common-dev nasm ninja-build qt6-base-private-dev \
+            qt6-charts-dev qt6-tools-dev qt6-base-dev-tools libavfilter-dev libavcodec-dev \
+            libswscale-dev pkg-config zlib1g-dev libva-dev libvdpau-dev \
+            spirv-tools spirv-headers libusb-1.0-0-dev \
+            libboost-dev libboost-fiber-dev libboost-context-dev \
+            libopus-dev libasound2-dev ccache \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1
+
+      - name: Install clang for PGO
+        run: |
+          set -euo pipefail
+          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key |
+            sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-$PGO_LLVM_VERSION main" |
+            sudo tee /etc/apt/sources.list.d/llvm.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            "clang-$PGO_LLVM_VERSION" "lld-$PGO_LLVM_VERSION"
+          "clang-$PGO_LLVM_VERSION" --version
+
+      - name: Check the PGO profile is present
+        working-directory: src-tree
+        run: |
+          set -euo pipefail
+          ls -la eglantine.profdata
+          test -s eglantine.profdata
+
+      - name: Configure
+        working-directory: src-tree
+        run: |
+          set -euo pipefail
+          profile="-fprofile-use=$PWD/eglantine.profdata -Wno-backend-plugin \
+            -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date"
+          cmake -S . -B build/release -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DYUZU_TESTS=OFF \
+            -DYUZU_CMD=ON \
+            -DYUZU_ROOM=OFF \
+            -DYUZU_ROOM_STANDALONE=OFF \
+            -DYUZU_USE_BUNDLED_QT=OFF \
+            -DYUZU_USE_BUNDLED_SDL3=ON \
+            -DVulkanHeaders_FORCE_BUNDLED=ON \
+            -DVulkanUtilityLibraries_FORCE_BUNDLED=ON \
+            -DENABLE_UPDATE_CHECKER=ON \
+            -DUSE_DISCORD_PRESENCE=OFF \
+            -DUSE_CCACHE=ON \
+            -DCMAKE_C_COMPILER="clang-$PGO_LLVM_VERSION" \
+            -DCMAKE_CXX_COMPILER="clang++-$PGO_LLVM_VERSION" \
+            -DCMAKE_EXE_LINKER_FLAGS="-B/usr/lib/llvm-$PGO_LLVM_VERSION/bin -fuse-ld=lld" \
+            "-DCMAKE_C_FLAGS=$profile" \
+            "-DCMAKE_CXX_FLAGS=$profile"
+
+      - name: Build
+        working-directory: src-tree
+        run: |
+          set -euo pipefail
+          ccache --zero-stats || true
+          cmake --build build/release --target yuzu yuzu-cmd --parallel
+          ccache --show-stats || true
+
+      - name: Package the AppImage
+        working-directory: src-tree
+        run: |
+          set -euo pipefail
+          test -x build/release/bin/firefly
+          test -x build/release/bin/eden-cli
+          tools="$RUNNER_TEMP/linuxdeploy"
+          mkdir -p "$tools"
+          arch=$(uname -m)
+          curl -fsSL -o "$tools/linuxdeploy-$arch.AppImage" \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$arch.AppImage
+          curl -fsSL -o "$tools/linuxdeploy-plugin-qt-$arch.AppImage" \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-$arch.AppImage
+          chmod +x "$tools"/*.AppImage
+          icon="$RUNNER_TEMP/io.github.zortos293.lichii.png"
+          cp dist/lichii.png "$icon"
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          # No install-qt-action here, so point the Qt plugin at the system qmake.
+          export QMAKE="$(command -v qmake6 || command -v qmake || echo /usr/lib/qt6/bin/qmake)"
+          export EXTRA_QT_MODULES=waylandcompositor
+          export EXTRA_PLATFORM_PLUGINS='libqwayland-egl.so;libqwayland-generic.so'
+          export LDAI_VERSION="build-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
+          export LDAI_OUTPUT="firefly-linux-x86_64-pgo.AppImage"
+          export OUTPUT="$LDAI_OUTPUT"
+          export ARCH="$arch"
+          "$tools/linuxdeploy-$arch.AppImage" --appdir AppDir \
+            --executable build/release/bin/firefly \
+            --executable build/release/bin/eden-cli \
+            --desktop-file dist/io.github.zortos293.lichii.desktop \
+            --icon-file "$icon" \
+            --plugin qt \
+            --output appimage
+          test -s "$LDAI_OUTPUT"
+          ls -la "$LDAI_OUTPUT"
+          sha256sum "$LDAI_OUTPUT" > "$LDAI_OUTPUT.sha256"
+
+      - name: Upload the AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: firefly-linux-x86_64-pgo
+          path: |
+            src-tree/firefly-linux-x86_64-pgo.AppImage
+            src-tree/firefly-linux-x86_64-pgo.AppImage.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
