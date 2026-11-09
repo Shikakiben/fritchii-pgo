@@ -80,6 +80,10 @@ jobs:
             echo "should_build=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # An hourly schedule would otherwise leave one empty run per hour in the Actions tab. When
+      # there is nothing to build, a final job deletes the run itself: no history, no noise.
+      # It runs last, so nothing downstream is cut short.
+
   build:
     needs: check
     if: needs.check.outputs.should_build == 'true'
@@ -193,3 +197,25 @@ jobs:
           )"
           gh release create "$tag" dist/*.AppImage dist/*.AppImage.sha256 \
             --title "$title" --notes "$notes" --prerelease
+
+  # Last job of the run: when the check found nothing to build, the whole run is deleted from the
+  # Actions tab. Runs last on purpose -- deleting a run stops the jobs still queued in it.
+  cleanup:
+    needs: [check, build]
+    if: always() && needs.check.outputs.should_build != 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Delete this run (nothing to build)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          sleep 5                      # let the other jobs record their conclusion first
+          if gh api -X DELETE "repos/$REPO/actions/runs/$RUN" >/dev/null 2>&1; then
+            echo "removed run $RUN: nothing to build"
+          else
+            echo "::notice::could not remove run $RUN; it stays in the history"
+          fi
