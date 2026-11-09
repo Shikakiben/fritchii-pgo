@@ -213,10 +213,15 @@ jobs:
           REPO: ${{ github.repository }}
           RUN: ${{ github.run_id }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           sleep 5                      # let the other jobs record their conclusion first
-          if gh api -X DELETE "repos/$REPO/actions/runs/$RUN" >/dev/null 2>&1; then
+          # --include and no `set -e`: the HTTP status is what tells 403 (no permissions) from 404.
+          out="$(gh api -X DELETE "repos/$REPO/actions/runs/$RUN" --include 2>&1 || true)"
+          echo "$out" | head -20
+          if echo "$out" | grep -q '204 No Content'; then
             echo "removed run $RUN: nothing to build"
+          elif echo "$out" | grep -q '403'; then
+            echo "::warning::the token may not delete runs (403); keeping the history"
           else
             echo "::notice::could not remove run $RUN; it stays in the history"
           fi
