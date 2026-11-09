@@ -1,24 +1,34 @@
-# Fritchii — Linux PGO AppImage
+# OoT on Linux — builds and a GUI
 
-Builds the Linux x86-64 **PGO AppImage** of [Frizti/Fritchii](https://github.com/Frizti/Fritchii),
-a Lichii fork tuned for *Ocarina of Time* (Switch 2), on demand, from its source.
+Builds for *The Legend of Zelda: Ocarina of Time* (Nintendo Switch 2) on Linux, produced on GitHub
+Actions and downloadable as workflow **artifacts**:
 
-Fritchii publishes Windows-only releases; its workflow and its PGO profile are in the repository.
+| Workflow | What it produces | Kind |
+|---|---|---|
+| **build fritchii** | the Linux x86-64 **PGO AppImage** of [Fritchii](https://github.com/Frizti/Fritchii), a Lichii fork tuned for OoT | artifact |
+| **build appimage** | **NX2navi Linux GUI**: NX2navi's build kit plus a window (see [README-nx2navi-gui.md](README-nx2navi-gui.md)) | artifact + release |
 
-## Why only Fritchii
+Everything here builds from the upstream projects' own sources. **No game files are included**, and
+none is ever needed on this side: each player builds the game from their own dump.
 
-Firefly and Vendichii were built here too and have been dropped (9 Nov 2026): both had stopped
-committing for 30–40 h, are single-person forks far behind upstream, and their Linux value is
-covered by Fritchii, which is more active and further along. Any other repository can still be
-built through the `upstream` input below.
+Nothing is published as a GitHub release except the NX2navi GUI build; the Fritchii AppImages stay
+as run artifacts (30 days for the AppImage, 7 for the fallback binaries), which keeps the Releases
+page free for the GUI one.
 
-## Use
+---
+
+## build fritchii
+
+Fritchii publishes Windows-only releases; its workflow and its PGO profile are in its repository.
+This workflow checks the source out and runs the same build its CI runs, with `eglantine.profdata`.
+
+### Use
 
 Actions → **build fritchii** → *Run workflow*:
 
 | Input | Meaning |
 |---|---|
-| `branch` | dropdown with the real branches (`nx2`, `hotfix/v4.1`, `oot-gather-fix`, `fritchii-v5.3`, `test/no-sky-fold`), or `other` |
+| `branch` | dropdown with the real branches (`nx2`, `oot-gather-fix`, `fritchii-v5.5`, `fritchii-v5.3`, `hotfix/v4.1`, `test/no-sky-fold`), or `other` |
 | `linux_fix` | `none`, `status`, or `v5` — see below |
 | `disable_werror` | build with `-DENABLE_WERROR=OFF` |
 | `ref_custom` | used when `branch` is `other`: any branch, tag or commit. A pasted GitHub URL is accepted and reduced to the ref |
@@ -26,14 +36,14 @@ Actions → **build fritchii** → *Run workflow*:
 
 ### `linux_fix`
 
-Fritchii's newer branches do not compile on Linux upstream. These options apply the fixes that
-are still open as pull requests there:
+Fritchii's newer branches do not compile on Linux upstream. These options apply the fixes that are
+still open as pull requests there:
 
 | Value | What it does | Needed on |
 |---|---|---|
 | `none` | upstream source untouched | `nx2`, `test/no-sky-fold` |
 | `status` | rename the `Status` clash with Xlib | `hotfix/v4.1` (PR #15) |
-| `v5` | the three fixes of PR #19, from `patches/fritchii-v53-linux.diff` | `fritchii-v5.3`, `oot-gather-fix` |
+| `v5` | the three fixes of PR #19, from `patches/fritchii-v53-linux.diff` | `fritchii-v5.5`, `fritchii-v5.3`, `oot-gather-fix` |
 
 The three hard errors in v5:
 
@@ -44,22 +54,82 @@ The three hard errors in v5:
 3. `renderer_vulkan/vk_pipeline_cache.cpp` — Xlib's `#define Status int` eats
    `PipelineCacheMergeResult::Status`; `#undef Status` after the includes.
 
-`fritchii-v5.3` and `oot-gather-fix` are the same commit (`1a7a3c03`), so the patch applies to
-both. It is byte-for-byte what PR #19 does for these files.
+`fritchii-v5.5`, `fritchii-v5.3` and `oot-gather-fix` share the same tree for these files, so the
+patch applies to all three. It is byte-for-byte what PR #19 does for them.
 
 `disable_werror` matters on v5: upstream compiles with `-Werror` and v5 raises 11 more warnings.
-Verified working combination: `branch=fritchii-v5.3`, `linux_fix=v5`, `disable_werror=true` →
-AppImage built in ~51 min.
+
+Verified combinations:
+
+| Branch | `linux_fix` | `disable_werror` | Result |
+|---|---|---|---|
+| `fritchii-v5.3` | `v5` | ✅ | AppImage, 51 min |
+| `fritchii-v5.5` | `v5` | ✅ | AppImage, 15 min (warm ccache) |
 
 `build.yml` is the shared, reusable job; it has no dispatch trigger.
 
+### Output
+
+Artifact `<project>-linux-x86_64-pgo-<YYYYMMDD-HHMM>` (Paris time), holding the AppImage and its
+`.sha256`:
+
+```sh
+chmod +x fritchii-linux-x86_64-pgo-20261109-1505.AppImage
+./fritchii-linux-x86_64-pgo-20261109-1505.AppImage
+```
+
+If the AppImage packaging fails, the compiled binaries are still uploaded as
+`<project>-linux-x86_64-pgo-binaries-<stamp>`.
+
+### Why clang 23
+
+`eglantine.profdata` is profile format **version 14**. LLVM 21 reads 12, LLVM 22 reads 13; a reader
+older than the writer refuses the profile. The workflow installs clang 23 from apt.llvm.org, the
+version the upstream CI pins (`PGO_LLVM_VERSION: "23"`).
+
+---
+
+## build appimage (NX2navi GUI)
+
+https://github.com/tangerineturtle1/NX2navi builds OoT from a `.nup` with `tools/make_game.py`, and
+ships an AppImage packer — but that AppImage is command-line only, and NX2navi's own
+`installer/gui.py` wants a base NSP, an update NSP and a console keys file.
+
+This workflow runs the build kit inside a Tk window on the `.nup` route: dependency check, file
+pickers, progress bar, Play button. Full description in
+[README-nx2navi-gui.md](README-nx2navi-gui.md).
+
+### Use
+
+Actions → **build appimage** → *Run workflow*:
+
+| Input | Meaning |
+|---|---|
+| `nx2navi_ref` | NX2navi tag, branch or commit; empty = the newest release |
+| `release` | publish the AppImage as a GitHub release (default on) |
+
+It also runs daily at 06:23, and on every NX2navi release and on tags of this repository.
+
+Takes the AppImage from Releases:
+
+```sh
+chmod +x NX2navi-Linux-GUI-0.6.0-x86_64.AppImage
+./NX2navi-Linux-GUI-0.6.0-x86_64.AppImage
+```
+
+The window checks for `clang`, `lld` and the development headers of SDL3, Vulkan, Opus, libvpx,
+dav1d and zstd, lists what is missing and offers the install command for the distribution. Everything
+else — the shader translator, Python 3.14 and its packages — is inside the AppImage.
+
+---
+
 ## Why the branch list is static
 
-`workflow_dispatch` cannot fill a `choice` input from the API when the page is opened: GitHub
-only accepts options written in the workflow file. The list lives in `build-fritchii.yml`; when
-upstream adds a branch, add it there — `other` always covers the gap.
+`workflow_dispatch` cannot fill a `choice` input from the API when the page is opened: GitHub only
+accepts options written in the workflow file. The list lives in `build-fritchii.yml`; when upstream
+adds a branch, add it there — `other` always covers the gap.
 
-## Safety checks before the 30-minute build
+## Safety checks before the long build
 
 The first steps run in seconds and stop the run if something is wrong:
 
@@ -68,28 +138,9 @@ The first steps run in seconds and stop the run if something is wrong:
 - `eglantine.profdata` is present in the source;
 - a patch from `patches/` applies cleanly (`git apply --check`, then `-3`).
 
-## Output
-
-Artifact `<project>-linux-x86_64-pgo-<YYYYMMDD-HHMM>` (Paris time), containing the AppImage and
-its `.sha256`:
-
-```sh
-chmod +x fritchii-linux-x86_64-pgo-20261109-1125.AppImage
-./fritchii-linux-x86_64-pgo-20261109-1125.AppImage
-```
-
-If the AppImage packaging fails, the compiled binaries are still uploaded as
-`<project>-linux-x86_64-pgo-binaries-<stamp>`.
-
-## Why clang 23
-
-`eglantine.profdata` is profile format **version 14**. LLVM 21 reads 12, LLVM 22 reads 13;
-a reader older than the writer refuses the profile. The workflow installs clang 23 from
-apt.llvm.org, the version the upstream CI pins (`PGO_LLVM_VERSION: "23"`).
-
 ## No game data
 
-The build only produces the emulator. There is no game code, key or firmware in this
-repository, and the artifacts contain none. Publishing them is covered by the GPLv3 the
-upstream project is licensed under; the source it was built from is the upstream repository at
-the commit recorded in the artifact name.
+Every build here produces an emulator or a builder, never game content. There is no game code, key or
+firmware in this repository, and the artifacts contain none. Publishing them is covered by the GPLv3
+the upstream projects are licensed under; the source each one was built from is the upstream
+repository at the commit recorded in the artifact name.
