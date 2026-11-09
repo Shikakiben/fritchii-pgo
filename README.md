@@ -12,13 +12,29 @@ paired with the wrong repository.
 |---|---|---|---|
 | **build firefly** | [Kradnah/Firefly](https://github.com/Kradnah/Firefly) | `main` | `main` |
 | **build vendichii** | [VendavalSC/Vendichii](https://github.com/VendavalSC/Vendichii) | `main` | `main` |
-| **build fritchii** | [Frizti/Fritchii](https://github.com/Frizti/Fritchii) | `nx2` | `nx2`, `hotfix/v4.1`, `oot-gather-fix`, `test/no-sky-fold` |
+| **build fritchii** | [Frizti/Fritchii](https://github.com/Frizti/Fritchii) | `nx2` | `nx2`, `hotfix/v4.1`, `oot-gather-fix`, `fritchii-v5.3`, `test/no-sky-fold` |
 
-On **Fritchii `hotfix/v4.1`**, set **`apply_pr_fix`**: that branch does not compile on Linux
-(`expected unqualified-id` in `vk_pipeline_cache.cpp`) because `Xlib.h` defines `Status` as a
-macro. The option re-applies the fix from upstream PR #15 — `using MergeStatus =
-decltype(VideoCommon::PipelineCacheMergeResult::status);` and `case MergeStatus::` — which is
-byte-identical to what that PR does.
+On **Fritchii**, the `linux_fix` input applies the fixes upstream has not merged yet:
+
+| `linux_fix` | What it does | Needed on |
+|---|---|---|
+| `none` | upstream source untouched | `nx2`, `oot-gather-fix`, `test/no-sky-fold` |
+| `status` | `#undef Status` / rename, the X11 macro clash | `hotfix/v4.1` (PR #15) |
+| `v5` | the three fixes of PR #19, from `patches/fritchii-v53-linux.diff` | `fritchii-v5.3` |
+
+`disable_werror` builds with `-DENABLE_WERROR=OFF`. Upstream compiles with `-Werror`, so a new
+warning stops the build; v5 raises 11 of them. The three hard errors in v5, all fixed by the
+`v5` patch:
+
+1. `common/host_memory.cpp` — `CommitAllBut` logs `g_committed_bytes`, declared only under
+   `#ifdef _WIN32`. The log goes inside the same guard.
+2. `video_core/nx2_precompile.cpp` — `Common::FS::GetExeDirectory()` is Windows-only; a local
+   `RecipesDir()` reads `/proc/self/exe` elsewhere.
+3. `renderer_vulkan/vk_pipeline_cache.cpp` — Xlib's `#define Status int` eats
+   `PipelineCacheMergeResult::Status`; `#undef Status` after the includes.
+
+`fritchii-v5.3` and `oot-gather-fix` are the same commit (`1a7a3c03`), so the patch applies to
+both. The patch is byte-for-byte what PR #19 does for these three files.
 
 Every workflow also has:
 

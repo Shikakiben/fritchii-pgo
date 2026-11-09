@@ -7,18 +7,27 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: "Fritchii branch"
+        description: "Fritchii branch or tag"
         type: choice
         options:
           - "default (nx2)"
           - nx2
-          - hotfix/v4.1
           - oot-gather-fix
+          - fritchii-v5.3
+          - hotfix/v4.1
           - test/no-sky-fold
           - "other (type below)"
         default: "default (nx2)"
-      apply_pr_fix:
-        description: "Apply the 'Status' X11 macro fix to vk_pipeline_cache.cpp (needed on hotfix/v4.1)"
+      linux_fix:
+        description: "Linux build fixes: none, status (X11 Status macro), v5 (all three of PR #19)"
+        type: choice
+        options:
+          - none
+          - status
+          - v5
+        default: "none"
+      disable_werror:
+        description: "Build with -DENABLE_WERROR=OFF (v5 raises 11 warnings; they become errors)"
         type: boolean
         default: false
       ref_custom:
@@ -39,6 +48,9 @@ jobs:
     with:
       project: fritchii
       branch: ${{ inputs.branch }}
-      apply_pr_fix: ${{ inputs.apply_pr_fix }}
+      # `status` is the old boolean path (apply_pr_fix); `v5` applies the patch in patches/.
+      apply_pr_fix: ${{ inputs.linux_fix == 'status' && 'true' || 'false' }}
+      patch: ${{ inputs.linux_fix == 'v5' && 'fritchii-v53-linux.diff' || '' }}
+      disable_werror: ${{ inputs.disable_werror && 'true' || 'false' }}
       ref_custom: ${{ inputs.ref_custom }}
       upstream: ${{ inputs.upstream }}

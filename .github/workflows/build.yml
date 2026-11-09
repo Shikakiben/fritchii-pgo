@@ -16,7 +16,15 @@ on:
         type: string
         default: "(project default)"
       apply_pr_fix:
-        description: "Apply the Status X11 macro fix (needed on hotfix/v4.1)"
+        description: "Apply the Linux build fixes kept in patches/ (false = upstream source as is)"
+        type: string
+        default: "false"
+      patch:
+        description: "Extra patch file under patches/ to apply (e.g. fritchii-v53-linux.diff)"
+        type: string
+        default: ""
+      disable_werror:
+        description: "Configure with -DENABLE_WERROR=OFF (upstream turns warnings into errors)"
         type: string
         default: "false"
       ref_custom:
@@ -126,15 +134,12 @@ jobs:
         run: |
           set -euo pipefail
           file=src/video_core/renderer_vulkan/vk_pipeline_cache.cpp
-          if grep -q 'using MergeStatus' "$file"; then
+          if grep -q 'using MergeStatus' "$file" || grep -q '^#undef Status' "$file"; then
             echo "fix already present in $file"
             exit 0
           fi
-          if ! grep -q 'using Status = VideoCommon::PipelineCacheMergeResult::Status;' "$file"; then
-            echo "::error::expected the 'using Status = ...' line in $file; the branch changed, review the fix"
-            exit 1
-          fi
-          python3 - "$file" <<'PY'
+          if grep -q 'using Status = VideoCommon::PipelineCacheMergeResult::Status;' "$file"; then
+            python3 - "$file" <<'PY'
           import re, sys
           path = sys.argv[1]
           src = open(path, encoding='utf-8').read()
@@ -146,8 +151,53 @@ jobs:
           src = re.sub(r"\bcase Status::", "case MergeStatus::", src)
           open(path, 'w', encoding='utf-8').write(src)
           PY
-          grep -n 'using MergeStatus\|case MergeStatus::' "$file" | head -10
-          echo "Status macro fix applied"
+            echo "renamed Status -> MergeStatus"
+          elif grep -q '^#endif$' "$file"; then
+            # The v5 tree uses the X11 type through Qt instead: undefine the macro
+            # after the includes (the same fix as upstream PR #19).
+            python3 - "$file" <<'PY'
+          import sys
+          path = sys.argv[1]
+          src = open(path, encoding='utf-8').read()
+          marker = '\nnamespace Vulkan {\n'
+          if marker not in src:
+              sys.exit('cannot find "namespace Vulkan {" to anchor the fix')
+          note = ('\n// Xlib.h, reached through Qt on Linux, defines Status as int; nothing here\n'
+                  '// uses the X11 type. (upstream PR #19, build.yml apply_pr_fix)\n'
+                  '#undef Status\n')
+          src = src.replace(marker, note + marker, 1)
+          open(path, 'w', encoding='utf-8').write(src)
+          PY
+            echo "#undef Status added before namespace Vulkan"
+          else
+            echo "::error::no known Status fix applies to $file; the source changed, review it"
+            exit 1
+          fi
+          grep -n 'using MergeStatus\|#undef Status' "$file" | head -5
+
+      # Any patch kept in this repository (patches/*.diff), applied on top of the
+      # checked-out source. Used for branches that do not build on Linux upstream:
+      # fritchii-v53-linux.diff carries the three fixes of Frizti/Fritchii PR #19.
+      - name: Apply a local patch (optional)
+        if: inputs.patch != ''
+        working-directory: src-tree
+        run: |
+          set -euo pipefail
+          patch_file="$GITHUB_WORKSPACE/patches/${{ inputs.patch }}"
+          test -f "$patch_file" || { echo "::error::no such patch: $patch_file"; ls -la "$GITHUB_WORKSPACE/patches"; exit 1; }
+          echo "applying ${{ inputs.patch }}"
+          if git apply --check "$patch_file" 2>/dev/null; then
+            git apply "$patch_file"
+            echo "patch applied"
+          elif git apply --check -3 "$patch_file" 2>/dev/null; then
+            git apply -3 "$patch_file"
+            echo "patch applied (3-way)"
+          else
+            echo "::error::${{ inputs.patch }} does not apply to this source; the branch moved, refresh the patch"
+            git apply --check -v "$patch_file" || true
+            exit 1
+          fi
+          git diff --stat | tail -12
 
       - name: Restore the compiler cache
         uses: actions/cache@v4
@@ -199,11 +249,21 @@ jobs:
 
       - name: Configure
         working-directory: src-tree
+        env:
+          WERROR: ${{ inputs.disable_werror }}
         run: |
           set -euo pipefail
           profile="-fprofile-use=$PWD/eglantine.profdata -Wno-backend-plugin \
             -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date"
+          # Upstream builds with -Werror; a new warning then stops the build. Callers
+          # can turn that off when building a branch upstream does not build on Linux.
+          werror_flag=()
+          if [ "$WERROR" = 'true' ]; then
+            werror_flag=(-DENABLE_WERROR=OFF)
+            echo "ENABLE_WERROR=OFF"
+          fi
           cmake -S . -B build/release -G Ninja \
+            "${werror_flag[@]}" \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=OFF \
             -DYUZU_TESTS=OFF \
