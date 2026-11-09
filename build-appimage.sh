@@ -54,6 +54,9 @@ done
 mkdir -p "$KIT/docs" "$KIT/bin" "$KIT/toolchain/vma"
 cp -a "$KIT_SRC/docs/README-BuildKit.md" "$KIT/docs/" 2>/dev/null || true
 cp -a "$KIT_SRC/build/xlate/nx2navi_xlate" "$KIT_SRC/build/xlate/nx2navi_xlate.id" "$KIT/bin/"
+# make_game.py's step_key() reads bin/nx2navi_xlate.id (the packed kit's place); a source checkout has
+# it in build/xlate/, so the copy above is what keeps `shaders` from stopping on a missing file.
+test -f "$KIT/bin/nx2navi_xlate.id" || { echo "nx2navi_xlate.id missing" >&2; exit 1; }
 cp -a "$KIT_SRC/toolchain/vma/vk_mem_alloc.h" "$KIT/toolchain/vma/" 2>/dev/null \
     || say "note: VMA header not present, build_game.py will fetch it on first use"
 
@@ -64,7 +67,8 @@ cp -a "$HERE/usr/share/nx2navi-gui/gui.py" "$APP/usr/share/nx2navi-gui/gui.py"
 
 # ---- relocatable CPython with the kit's packages
 say "unpacking Python"
-tar -xzf "$CACHE/python.tar.gz" -C "$APP/usr" --strip-components=1
+tar -xzf "$CACHE/python.tar.gz" -C "$APP/usr"          # the archive starts at python/, so usr/python/bin/python3
+test -x "$APP/usr/python/bin/python3" || { echo "unexpected Python archive layout" >&2; exit 1; }
 find "$APP/usr/python" -name EXTERNALLY-MANAGED -delete 2>/dev/null || true
 "$APP/usr/python/bin/python3" -m pip install --quiet --disable-pip-version-check \
     --no-warn-script-location numpy lz4 zstandard pillow
@@ -103,6 +107,18 @@ src, dst = sys.argv[1], sys.argv[2]
 with Image.open(src) as ico:
     ico.size = max(ico.ico.sizes())
     ico.convert("RGBA").save(dst)
+PY
+fi
+# appimagetool refuses to pack when the desktop file names an icon it cannot find.
+if [ ! -f "$APP/nx2navi.png" ]; then
+    "$APP/usr/python/bin/python3" - "$APP/nx2navi.png" <<'PY'
+import sys
+from PIL import Image, ImageDraw
+img = Image.new("RGBA", (256, 256), (24, 24, 32, 255))
+d = ImageDraw.Draw(img)
+d.ellipse((40, 40, 216, 216), fill=(90, 170, 90, 255))
+d.text((110, 116), "NX", fill=(255, 255, 255, 255))
+img.save(sys.argv[1])
 PY
 fi
 
