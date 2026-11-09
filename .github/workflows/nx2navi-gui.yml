@@ -26,7 +26,8 @@ on:
     - cron: '17 * * * *'        # hourly, at :17; the check below decides whether to build
 
 permissions:
-  contents: write
+  contents: write        # create the release
+  actions: write         # delete this run when there was nothing to build
 
 env:
   PY_URL: https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.14.10+20261026-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz
