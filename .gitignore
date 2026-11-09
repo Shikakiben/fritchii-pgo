@@ -1,0 +1,4 @@
+.cache/
+dist/
+AppDir/
+usr/share/nx2navi-gui/__pycache__/
