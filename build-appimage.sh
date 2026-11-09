@@ -57,8 +57,21 @@ cp -a "$KIT_SRC/build/xlate/nx2navi_xlate" "$KIT_SRC/build/xlate/nx2navi_xlate.i
 # make_game.py's step_key() reads bin/nx2navi_xlate.id (the packed kit's place); a source checkout has
 # it in build/xlate/, so the copy above is what keeps `shaders` from stopping on a missing file.
 test -f "$KIT/bin/nx2navi_xlate.id" || { echo "nx2navi_xlate.id missing" >&2; exit 1; }
-cp -a "$KIT_SRC/toolchain/vma/vk_mem_alloc.h" "$KIT/toolchain/vma/" 2>/dev/null \
-    || say "note: VMA header not present, build_game.py will fetch it on first use"
+
+# build_game.py looks for vk_mem_alloc.h in /usr/include first, then in toolchain/vma, and FETCHES it
+# into toolchain/vma when both are missing -- impossible in a read-only AppImage (Errno 30). A fresh
+# checkout has no toolchain/vma until its first build, so fetch the pinned header here when needed.
+VMA="$KIT/toolchain/vma/vk_mem_alloc.h"
+if [ -f "$KIT_SRC/toolchain/vma/vk_mem_alloc.h" ]; then
+    cp -a "$KIT_SRC/toolchain/vma/vk_mem_alloc.h" "$VMA"
+else
+    say "fetching vk_mem_alloc.h (VMA 3.4.0, the version upstream pins)"
+    curl -fL --retry 5 --retry-all-errors -o "$VMA" \
+        https://raw.githubusercontent.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/v3.4.0/include/vk_mem_alloc.h
+    echo "8487b7995ad3b263eb73bc5b9a77d71aa69b6bef5d58a715c02d2663afd81f1a  $VMA" | sha256sum -c - \
+        || { echo "vk_mem_alloc.h does not match the pinned hash" >&2; exit 1; }
+fi
+test -s "$VMA" || { echo "vk_mem_alloc.h missing" >&2; exit 1; }
 
 # ---- the GUI (this repository)
 say "adding the window"
