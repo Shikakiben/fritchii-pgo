@@ -1,14 +1,14 @@
 name: build (reusable)
 
 # Reusable build. Do not run this one directly: it has no dispatch trigger.
-# Use build-firefly.yml, build-vendichii.yml or build-fritchii.yml, whose branch
-# lists match the project they build.
+# Use build-fritchii.yml, whose branch list matches the project it builds.
+# Any other repository can still be built through its `upstream` input.
 
 on:
   workflow_call:
     inputs:
       project:
-        description: "firefly, vendichii or fritchii"
+        description: "fritchii (or any name, with `upstream` set)"
         type: string
         required: true
       branch:
@@ -63,10 +63,8 @@ jobs:
         run: |
           set -euo pipefail
           case "$PROJECT" in
-            firefly)   repo="Kradnah/Firefly";      default_ref="main" ;;
-            vendichii) repo="VendavalSC/Vendichii"; default_ref="main" ;;
             fritchii)  repo="Frizti/Fritchii";      default_ref="nx2"  ;;
-            *) echo "unknown project: $PROJECT"; exit 1 ;;
+            *) echo "::error::unknown project '$PROJECT'; pass 'upstream' to build another repository"; exit 1 ;;
           esac
           if [ -n "$UPSTREAM" ]; then
             repo="$UPSTREAM"
@@ -314,11 +312,11 @@ jobs:
           set -euo pipefail
           test -x build/release/bin/eden-cli
 
-          # The GUI binary is named `firefly` in Firefly and `lichii` in the
-          # Vendichii/Fritchii forks; detect it instead of hardcoding a name.
+          # The GUI binary is `lichii` in Fritchii; keep the detection generic so an
+          # `upstream` override still packages the right program.
           bin=""
-          for candidate in build/release/bin/firefly build/release/bin/lichii \
-                           build/release/bin/vendichii build/release/bin/fritchii; do
+          for candidate in build/release/bin/lichii build/release/bin/eglantine \
+                           build/release/bin/fritchii; do
             if [ -x "$candidate" ]; then bin="$candidate"; break; fi
           done
           if [ -z "$bin" ]; then
@@ -332,7 +330,7 @@ jobs:
           [ -n "$desktop" ] || { echo "no .desktop file in dist/"; exit 1; }
 
           icon=""
-          for candidate in dist/lichii.png dist/firefly.png dist/vendichii.png dist/fritchii.png; do
+          for candidate in dist/lichii.png dist/Eglantine.png dist/fritchii.png; do
             [ -f "$candidate" ] && { icon="$candidate"; break; }
           done
           [ -n "$icon" ] || icon="$(find dist -maxdepth 1 -name '*.png' | head -n 1)"
