@@ -5,6 +5,8 @@ name: build appimage
 #
 # The NX2navi sources are fetched from upstream at run time; this repository holds only the window
 # and this workflow. No game data is involved.
+#
+# It runs every hour and does nothing when the newest NX2navi release already has its AppImage.
 
 on:
   workflow_dispatch:
@@ -13,17 +15,15 @@ on:
         description: "NX2navi tag, branch or commit (empty = the newest release)"
         type: string
         default: ""
-      release:
-        description: "Publish the AppImage as a GitHub release"
+      force:
+        description: "Build even when this version's AppImage already exists"
         type: boolean
-        default: true
+        default: false
   push:
     tags:
       - 'v*'
   schedule:
-    - cron: '23 6 * * *'        # daily: a new NX2navi release is picked up within a day
-  release:
-    types: [published]
+    - cron: '17 * * * *'        # hourly, at :17; the check below decides whether to build
 
 permissions:
   contents: write
@@ -34,11 +34,16 @@ env:
   RT_URL: https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
 
 jobs:
-  build:
+  # Cheap: two API calls. Keeps the hourly schedule from rebuilding a version that is already
+  # published, and gives the build job the version to name its release with.
+  check:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    outputs:
+      ref: ${{ steps.ref.outputs.ref }}
+      version: ${{ steps.ref.outputs.version }}
+      should_build: ${{ steps.decide.outputs.should_build }}
     steps:
-      - name: Resolve the NX2navi tag
+      - name: Resolve the NX2navi release
         id: ref
         env:
           GH_TOKEN: ${{ github.token }}
@@ -49,14 +54,46 @@ jobs:
           if [ -z "$ref" ]; then
             ref="$(gh api repos/tangerineturtle1/NX2navi/releases/latest --jq .tag_name)"
           fi
+          version="${ref#v}"                     # v0.6.1 -> 0.6.1
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
-          echo "building NX2navi at $ref"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "newest NX2navi release: $ref (version $version)"
 
+      - name: Is this version already published?
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ref.outputs.version }}
+          FORCE: ${{ inputs.force }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag="nx2navi-gui-$VERSION"
+          if [ "$FORCE" = "true" ]; then
+            echo "forced: building $tag again"
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          elif gh api "repos/$REPO/releases/tags/$tag" >/dev/null 2>&1; then
+            echo "$tag is already published: nothing to build"
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$tag does not exist yet: building it"
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.should_build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      REF: ${{ needs.check.outputs.ref }}
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
       - name: Check out NX2navi
         uses: actions/checkout@v5
         with:
           repository: tangerineturtle1/NX2navi
-          ref: ${{ steps.ref.outputs.ref }}
+          ref: ${{ needs.check.outputs.ref }}
           path: kat
 
       - name: Check out this repository (the window)
@@ -111,10 +148,17 @@ jobs:
           ls -la dist
           cat dist/*.sha256
 
+      - name: Check the version matches what NX2navi says
+        run: |
+          set -euo pipefail
+          built="$(cat kat/VERSION)"
+          echo "NX2navi VERSION: $built, release tag resolved as $VERSION"
+          test "$built" = "$VERSION" || echo "::warning::VERSION ($built) differs from the tag ($VERSION)"
+
       - name: Upload the AppImage
         uses: actions/upload-artifact@v4
         with:
-          name: nx2navi-linux-gui
+          name: nx2navi-linux-gui-${{ needs.check.outputs.version }}
           path: |
             gui/dist/*.AppImage
             gui/dist/*.AppImage.sha256
@@ -122,16 +166,13 @@ jobs:
           retention-days: 30
 
       - name: Publish the release
-        if: inputs.release || github.event_name == 'push' || github.event_name == 'release'
-        working-directory: gui
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-          REF: ${{ steps.ref.outputs.ref }}
         run: |
           set -euo pipefail
-          version="$(cat "$GITHUB_WORKSPACE/kat/VERSION" 2>/dev/null || echo unknown)"
-          tag="nx2navi-gui-$version"
-          title="NX2navi $version — Linux AppImage with a GUI"
+          tag="nx2navi-gui-$VERSION"
+          title="NX2navi $VERSION — Linux AppImage with a GUI"
           notes="$(cat <<EOF
           **Download the .AppImage below, make it executable, run it.** Nothing else to install on the
           emulator side: the shader translator, Python and its packages are inside.
@@ -150,10 +191,5 @@ jobs:
           \`\`\`
           EOF
           )"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "release $tag exists: replacing its files"
-            gh release upload "$tag" dist/*.AppImage dist/*.sha256 --clobber
-          else
-            gh release create "$tag" dist/*.AppImage dist/*.sha256 \
-              --title "$title" --notes "$notes" --prerelease
-          fi
+          gh release create "$tag" dist/*.AppImage dist/*.AppImage.sha256 \
+            --title "$title" --notes "$notes" --prerelease

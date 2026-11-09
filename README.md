@@ -106,9 +106,11 @@ Actions → **build appimage** → *Run workflow*:
 | Input | Meaning |
 |---|---|
 | `nx2navi_ref` | NX2navi tag, branch or commit; empty = the newest release |
-| `release` | publish the AppImage as a GitHub release (default on) |
+| `force` | build even when this version's AppImage is already published |
 
-It also runs daily at 06:23, and on every NX2navi release and on tags of this repository.
+**It runs every hour** (`17 * * * *`) and costs nothing when there is no news: a first job reads the
+newest NX2navi release and checks whether `nx2navi-gui-<version>` already exists here. Only a new
+version starts the 90-minute build. Tags of this repository trigger it too.
 
 Takes the AppImage from Releases:
 
