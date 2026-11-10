@@ -1,4 +1,4 @@
-# OoT on Linux — builds and a GUI
+# OoT on Linux — Fritchii PGO AppImage
 
 Builds for *The Legend of Zelda: Ocarina of Time* (Nintendo Switch 2) on Linux, produced on GitHub
 Actions and downloadable as workflow **artifacts**:
@@ -6,14 +6,16 @@ Actions and downloadable as workflow **artifacts**:
 | Workflow | What it produces | Kind |
 |---|---|---|
 | **build fritchii** | the Linux x86-64 **PGO AppImage** of [Fritchii](https://github.com/Frizti/Fritchii), a Lichii fork tuned for OoT | artifact |
-| **build appimage** | **NX2navi Linux GUI**: NX2navi's build kit plus a window (see [README-nx2navi-gui.md](README-nx2navi-gui.md)) | artifact + release |
 
-Everything here builds from the upstream projects' own sources. **No game files are included**, and
+Everything here builds from the upstream project's own sources. **No game files are included**, and
 none is ever needed on this side: each player builds the game from their own dump.
 
-Nothing is published as a GitHub release except the NX2navi GUI build; the Fritchii AppImages stay
-as run artifacts (30 days for the AppImage, 7 for the fallback binaries), which keeps the Releases
-page free for the GUI one.
+Nothing is published as a GitHub release: the Fritchii AppImages stay as run artifacts (30 days for
+the AppImage, 7 for the fallback binaries).
+
+> The NX2navi GUI build that used to live here was removed on 10 Nov 2026: NX2navi now ships an
+> official Linux AppImage (`NX2navi-Linux-<version>-x86_64.AppImage`), so a local GUI wrapper is no
+> longer needed.
 
 ---
 
