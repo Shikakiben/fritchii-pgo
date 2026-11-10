@@ -39,6 +39,10 @@ on:
         description: "Name the output after the release (e.g. Fritchii-v5.7); empty keeps the repository name"
         type: string
         default: ""
+      release:
+        description: "Build a release instead of a branch: 'latest' or a tag; its name labels the output"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -65,6 +69,8 @@ jobs:
           REF_CUSTOM: ${{ inputs.ref_custom }}
           UPSTREAM: ${{ inputs.upstream }}
           LABEL: ${{ inputs.label }}
+          RELEASE: ${{ inputs.release }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           case "$PROJECT" in
@@ -90,6 +96,26 @@ jobs:
             *github.com/*/commit/*) ref="${ref#*/commit/}" ;;
           esac
           name="$(basename "$repo" | tr '[:upper:]' '[:lower:]')"
+          # A release, when asked for: its tag is what gets built, and its name labels
+          # the output. Fritchii publishes every release as a pre-release, so
+          # /releases/latest (which skips pre-releases) finds nothing: take the newest
+          # of the list instead.
+          if [ -n "$RELEASE" ]; then
+            if [ "$RELEASE" = "latest" ]; then
+              rel="$(gh api "repos/$repo/releases?per_page=1" --jq '.[0] | "\(.tag_name)\t\(.name)"')"
+            else
+              rel="$(gh api "repos/$repo/releases/tags/$RELEASE" --jq '"\(.tag_name)\t\(.name)"')"
+            fi
+            ref="${rel%%$'\t'*}"
+            relname="${rel#*$'\t'}"
+            if [ -z "$ref" ]; then
+              echo "::error::no release found in $repo for '$RELEASE'"; exit 1
+            fi
+            if [ -z "$LABEL" ] && [ -n "$relname" ]; then
+              LABEL="$(printf '%s' "$relname" | tr ' ' '-')"
+            fi
+            echo "release: $relname ($ref)"
+          fi
           # The release's own name, when the caller gives one: the artifact and the
           # AppImage then carry it (Fritchii-v5.7-linux-x86_64-pgo-20261110-2210).
           if [ -n "$LABEL" ]; then

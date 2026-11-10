@@ -30,11 +30,17 @@ Actions → **build fritchii** → *Run workflow*:
 
 | Input | Meaning |
 |---|---|
+| `release` | **`latest`** builds the newest Fritchii release: its tag is checked out and its name labels the output (`Fritchii-v5.7-linux-x86_64-pgo-…`). `no (use the branch)` keeps the branch below |
 | `branch` | dropdown with the real branches (`nx2`, `oot-gather-fix`, `fritchii-v5.5`, `fritchii-v5.3`, `hotfix/v4.1`, `test/no-sky-fold`), or `other` |
 | `linux_fix` | `none`, `status`, or `v5` — see below |
 | `disable_werror` | build with `-DENABLE_WERROR=OFF` |
 | `ref_custom` | used when `branch` is `other`: any branch, tag or commit. A pasted GitHub URL is accepted and reduced to the ref |
 | `upstream` | optional, build another repository (`owner/name`) |
+| `label` | names the artifact and the AppImage after the release, e.g. `Fritchii-v5.7`. Empty keeps `fritchii-…`; `release` fills it on its own |
+
+**Building a new release takes one click**: `release` = `latest`, everything else left alone.
+Fritchii publishes every release as a *pre-release*, so `/releases/latest` (which skips
+pre-releases) finds nothing — the workflow reads the newest entry of the release list instead.
 
 ### `linux_fix`
 
@@ -43,7 +49,7 @@ still open as pull requests there:
 
 | Value | What it does | Needed on |
 |---|---|---|
-| `none` | upstream source untouched | `nx2`, `test/no-sky-fold` |
+| `none` | upstream source untouched | `nx2`, `test/no-sky-fold`, and every release from **v5.6** on |
 | `status` | rename the `Status` clash with Xlib | `hotfix/v4.1` (PR #15) |
 | `v5` | the three fixes of PR #19, from `patches/fritchii-v53-linux.diff` | `fritchii-v5.5`, `fritchii-v5.3`, `oot-gather-fix` |
 

@@ -43,6 +43,13 @@ on:
         description: "Name the output after the release, e.g. Fritchii-v5.7 (empty: fritchii)"
         type: string
         default: ""
+      release:
+        description: "Build the newest Fritchii release instead of a branch (its tag and name are used)"
+        type: choice
+        options:
+          - "no (use the branch)"
+          - latest
+        default: "no (use the branch)"
 
 permissions:
   contents: read
@@ -60,3 +67,4 @@ jobs:
       ref_custom: ${{ inputs.ref_custom }}
       upstream: ${{ inputs.upstream }}
       label: ${{ inputs.label }}
+      release: ${{ inputs.release == 'latest' && 'latest' || '' }}
