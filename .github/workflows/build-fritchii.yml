@@ -39,6 +39,10 @@ on:
         description: "Optional: another repository, owner/name"
         type: string
         default: ""
+      label:
+        description: "Name the output after the release, e.g. Fritchii-v5.7 (empty: fritchii)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -55,3 +59,4 @@ jobs:
       disable_werror: ${{ inputs.disable_werror && 'true' || 'false' }}
       ref_custom: ${{ inputs.ref_custom }}
       upstream: ${{ inputs.upstream }}
+      label: ${{ inputs.label }}

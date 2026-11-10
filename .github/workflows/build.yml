@@ -35,6 +35,10 @@ on:
         description: "Override repository, owner/name"
         type: string
         default: ""
+      label:
+        description: "Name the output after the release (e.g. Fritchii-v5.7); empty keeps the repository name"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -60,6 +64,7 @@ jobs:
           BRANCH: ${{ inputs.branch }}
           REF_CUSTOM: ${{ inputs.ref_custom }}
           UPSTREAM: ${{ inputs.upstream }}
+          LABEL: ${{ inputs.label }}
         run: |
           set -euo pipefail
           case "$PROJECT" in
@@ -85,6 +90,11 @@ jobs:
             *github.com/*/commit/*) ref="${ref#*/commit/}" ;;
           esac
           name="$(basename "$repo" | tr '[:upper:]' '[:lower:]')"
+          # The release's own name, when the caller gives one: the artifact and the
+          # AppImage then carry it (Fritchii-v5.7-linux-x86_64-pgo-20261110-2210).
+          if [ -n "$LABEL" ]; then
+            name="$LABEL"
+          fi
           # Timestamp of the build in Paris time, so two builds of the same commit are
           # told apart: 20261108-1755
           stamp="$(TZ=Europe/Paris date +%Y%m%d-%H%M)"
