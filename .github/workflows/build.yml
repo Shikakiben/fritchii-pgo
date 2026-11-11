@@ -251,19 +251,36 @@ jobs:
 
       - name: Install Linux dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            autoconf cmake g++ gcc git glslang-tools libglu1-mesa-dev \
-            libpulse-dev libtool libudev-dev libxkbcommon-x11-0 \
-            mesa-common-dev nasm ninja-build qt6-base-private-dev \
-            qt6-charts-dev qt6-tools-dev qt6-base-dev-tools qt6-wayland qt6-wayland-dev \
-            libavfilter-dev libavcodec-dev \
-            libswscale-dev pkg-config zlib1g-dev libva-dev libvdpau-dev \
-            spirv-tools spirv-headers libusb-1.0-0-dev \
-            libboost-dev libboost-fiber-dev libboost-context-dev \
-            libopus-dev libasound2-dev ccache \
-            libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
-            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1
+          set -euo pipefail
+          # A runner lost DNS for azure.archive.ubuntu.com and apt gave up here after an hour and
+          # forty minutes of retries ("Temporary failure resolving"), which threw the whole build
+          # away before it compiled anything. apt's own retries do not cover a resolver outage, so
+          # the whole update+install runs again, five times, with a growing pause.
+          attempt=1
+          while true; do
+            if sudo apt-get -o Acquire::Retries=5 update &&
+               sudo apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
+                 autoconf cmake g++ gcc git glslang-tools libglu1-mesa-dev \
+                 libpulse-dev libtool libudev-dev libxkbcommon-x11-0 \
+                 mesa-common-dev nasm ninja-build qt6-base-private-dev \
+                 qt6-charts-dev qt6-tools-dev qt6-base-dev-tools qt6-wayland qt6-wayland-dev \
+                 libavfilter-dev libavcodec-dev \
+                 libswscale-dev pkg-config zlib1g-dev libva-dev libvdpau-dev \
+                 spirv-tools spirv-headers libusb-1.0-0-dev \
+                 libboost-dev libboost-fiber-dev libboost-context-dev \
+                 libopus-dev libasound2-dev ccache \
+                 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+                 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1; then
+              break
+            fi
+            if [ "$attempt" -ge 5 ]; then
+              echo "::error::apt could not install the dependencies after 5 attempts"
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            echo "apt failed, attempt $attempt in 20s"
+            sleep 20
+          done
           # The AppImage step asks linuxdeploy for the Wayland platform plugins.
           test -f /usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/libqwayland-egl.so \
             || { echo "missing Qt Wayland plugin"; exit 1; }
@@ -275,9 +292,22 @@ jobs:
             sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
           echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-$PGO_LLVM_VERSION main" |
             sudo tee /etc/apt/sources.list.d/llvm.list > /dev/null
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            "clang-$PGO_LLVM_VERSION" "lld-$PGO_LLVM_VERSION"
+          # Same resolver outages as the step above: retry the pair instead of losing the run.
+          attempt=1
+          while true; do
+            if sudo apt-get -o Acquire::Retries=5 update &&
+               sudo apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
+                 "clang-$PGO_LLVM_VERSION" "lld-$PGO_LLVM_VERSION"; then
+              break
+            fi
+            if [ "$attempt" -ge 5 ]; then
+              echo "::error::apt could not install clang-$PGO_LLVM_VERSION after 5 attempts"
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            echo "apt failed, attempt $attempt in 20s"
+            sleep 20
+          done
           "clang-$PGO_LLVM_VERSION" --version
 
       - name: Check the PGO profile is present
