@@ -456,9 +456,13 @@ jobs:
           # scans the Qt plugin directory. Without it every toolbar, Settings and
           # in-game dock icon is an empty pixmap: the buttons are there and clickable,
           # but invisible except for their hover shadow (what 5.8.4 shipped).
+          rm -rf squashfs-root
           ./"$LDAI_OUTPUT" --appimage-extract 'usr/plugins/imageformats/libqsvg.so' \
-            > /dev/null 2>&1 \
-            || { echo "::error::$LDAI_OUTPUT has no Qt SVG image plugin: every icon would be blank"; exit 1; }
+            > /dev/null 2>&1 || true
+          if [ ! -f squashfs-root/usr/plugins/imageformats/libqsvg.so ]; then
+            echo "::error::$LDAI_OUTPUT has no Qt SVG image plugin: every icon would be blank"
+            exit 1
+          fi
           rm -rf squashfs-root
           ls -la "$LDAI_OUTPUT"
           sha256sum "$LDAI_OUTPUT" > "$LDAI_OUTPUT.sha256"
