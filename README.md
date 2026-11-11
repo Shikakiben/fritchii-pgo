@@ -1,4 +1,4 @@
-# OoT on Linux — Fritchii PGO AppImage
+# Fritchii PGO — Linux AppImage
 
 Builds for *The Legend of Zelda: Ocarina of Time* (Nintendo Switch 2) on Linux, produced on GitHub
 Actions and downloadable as workflow **artifacts**:
@@ -94,16 +94,30 @@ Verified combinations:
 
 ### Output
 
-Artifact `<project>-linux-x86_64-pgo-<YYYYMMDD-HHMM>` (Paris time), holding the AppImage and its
-`.sha256`:
+Artifact `Fritchii-v<version>-linux-x86_64-pgo`, holding the AppImage and its `.sha256`:
 
 ```sh
-chmod +x fritchii-linux-x86_64-pgo-20261109-1505.AppImage
-./fritchii-linux-x86_64-pgo-20261109-1505.AppImage
+chmod +x Fritchii-v5.8.4-linux-x86_64-pgo.AppImage
+./Fritchii-v5.8.4-linux-x86_64-pgo.AppImage
 ```
 
+The name no longer carries a timestamp: `release: latest` fills it with the release's own name, so
+two runs of the same release are told apart by the run, not by a date in the file.
+
 If the AppImage packaging fails, the compiled binaries are still uploaded as
-`<project>-linux-x86_64-pgo-binaries-<stamp>`.
+`Fritchii-v<version>-linux-x86_64-pgo-binaries`.
+
+### The Qt SVG plugin is not optional
+
+Fritchii draws **every** icon through `QImageReader("svg")` in `fritchii_ui.cpp` (`RenderSvg`). Qt
+reads SVG through a plugin (`imageformats/libqsvg.so`, from Ubuntu's `libqt6svg6`) that is loaded at
+run time — never a linked dependency, so `linuxdeploy` only ships it if the package is installed
+when it scans the Qt plugin directory.
+
+Without it every icon becomes an empty pixmap: the toolbar (Library, Settings, Help) and the in-game
+dock (pause, restart, stop, fullscreen, menu) are **there and clickable but invisible**, showing
+nothing but their hover shadow. That is what 5.8.0–5.8.4 shipped. The workflow installs
+`libqt6svg6` and checks the built AppImage contains the plugin before uploading.
 
 ### Why clang 23
 
