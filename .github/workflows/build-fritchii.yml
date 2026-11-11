@@ -20,12 +20,13 @@ on:
           - "other (type below)"
         default: "default (nx2)"
       linux_fix:
-        description: "Linux build fixes: none, status (X11 Status macro), v5 (all three of PR #19)"
+        description: "Linux build fixes: none, status (X11 Status macro), v5 (all three of PR #19), v57 (PRs #43 and #52)"
         type: choice
         options:
           - none
           - status
           - v5
+          - v57
         default: "none"
       disable_werror:
         description: "Build with -DENABLE_WERROR=OFF (v5 raises 11 warnings; they become errors)"
@@ -62,7 +63,7 @@ jobs:
       branch: ${{ inputs.branch }}
       # `status` is the old boolean path (apply_pr_fix); `v5` applies the patch in patches/.
       apply_pr_fix: ${{ inputs.linux_fix == 'status' && 'true' || 'false' }}
-      patch: ${{ inputs.linux_fix == 'v5' && 'fritchii-v53-linux.diff' || '' }}
+      patch: ${{ inputs.linux_fix == 'v5' && 'fritchii-v53-linux.diff' || inputs.linux_fix == 'v57' && 'fritchii-v57-linux.diff' || '' }}
       disable_werror: ${{ inputs.disable_werror && 'true' || 'false' }}
       ref_custom: ${{ inputs.ref_custom }}
       upstream: ${{ inputs.upstream }}

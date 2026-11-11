@@ -223,8 +223,8 @@ jobs:
         working-directory: src-tree
         run: |
           set -euo pipefail
-          patch_file="$GITHUB_WORKSPACE/builder/patches/${{ inputs.patch }}"
-          test -f "$patch_file" || { echo "::error::no such patch: $patch_file"; ls -la "$GITHUB_WORKSPACE/builder/patches" || true; exit 1; }
+          patch_file="$GITHUB_WORKSPACE/patches/${{ inputs.patch }}"
+          test -f "$patch_file" || { echo "::error::no such patch: $patch_file"; ls -la "$GITHUB_WORKSPACE/patches" || true; exit 1; }
           echo "applying ${{ inputs.patch }}"
           if git apply --check "$patch_file" 2>/dev/null; then
             git apply "$patch_file"

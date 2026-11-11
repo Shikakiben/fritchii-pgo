@@ -52,6 +52,7 @@ still open as pull requests there:
 | `none` | upstream source untouched | `nx2`, `test/no-sky-fold`, and every release from **v5.6** on |
 | `status` | rename the `Status` clash with Xlib | `hotfix/v4.1` (PR #15) |
 | `v5` | the three fixes of PR #19, from `patches/fritchii-v53-linux.diff` | `fritchii-v5.5`, `fritchii-v5.3`, `oot-gather-fix` |
+| `v57` | PR #43 (clang `-Wrange-loop-construct` in `fritchii_ui.cpp`) and PR #52 (black blended draws: strict aliasing drops the colour mask), from `patches/fritchii-v57-linux.diff` | `fritchii-v5.6`, `fritchii-v5.7` while both PRs are open |
 
 The three hard errors in v5:
 
@@ -64,6 +65,21 @@ The three hard errors in v5:
 
 `fritchii-v5.5`, `fritchii-v5.3` and `oot-gather-fix` share the same tree for these files, so the
 patch applies to all three. It is byte-for-byte what PR #19 does for them.
+
+### `v57` — what v5.6/v5.7 need on Linux
+
+Two pull requests that are still open upstream, both in `patches/fritchii-v57-linux.diff`:
+
+1. **#43** — v5.6's new `src/yuzu/fritchii/fritchii_ui.cpp` copies a `QString` in two range-for
+   loops. clang with the project's `-Werror` rejects that (`-Wrange-loop-construct`) and the build
+   stops. Two `const QString&` fix it.
+2. **#52** — commit `77d7a70cda` builds a `BlendingAttachment` in a local and reads it back through
+   a union. Strict aliasing may drop the colour mask, so blended draws write alpha only and the
+   title-screen panels, Navi and particles come out as **black silhouettes**. The patch refreshes
+   the attachments in place again, as v5.5 did.
+
+`git apply --check` is clean against the `fritchii-v5.7` tag. Both are no-ops semantically on a
+compiler that does not fall for the aliasing, so they are safe to carry until merged.
 
 `disable_werror` matters on v5: upstream compiles with `-Werror` and v5 raises 11 more warnings.
 

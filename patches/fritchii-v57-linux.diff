@@ -1,0 +1,72 @@
+# Fritchii v5.7 on Linux, two upstream pull requests still open.
+#
+# #43 (clang -Wrange-loop-construct in BackupSettings): v5.6's new
+#     fritchii_ui.cpp copies a QString in two range-for loops, which clang
+#     with the project's -Werror rejects, so the build stops.
+# #52 (black blended draws on Linux): 77d7a70cda builds BlendingAttachment
+#     in a local and reads it back through a union; strict aliasing may
+#     drop the colour mask, so blended draws write alpha only and the
+#     title-screen panels, Navi and particles come out as black silhouettes.
+#
+# Both apply to fritchii-v5.7 as is (git apply --check: clean).
+# Remove once either is merged upstream.
+
+diff --git a/src/yuzu/fritchii/fritchii_ui.cpp b/src/yuzu/fritchii/fritchii_ui.cpp
+index 93b6a6837d..530c044ec1 100644
+--- a/src/yuzu/fritchii/fritchii_ui.cpp
++++ b/src/yuzu/fritchii/fritchii_ui.cpp
+@@ -469,7 +469,7 @@ QString BackupSettings() {
+         return {};
+     }
+     bool ok = true;
+-    for (const QString name : {QStringLiteral("qt-config.ini"), QStringLiteral("frizti.ini")}) {
++    for (const QString& name : {QStringLiteral("qt-config.ini"), QStringLiteral("frizti.ini")}) {
+         if (config.exists(name)) {
+             ok &= QFile::copy(config.filePath(name), QDir(folder).filePath(name));
+         }
+@@ -509,7 +509,7 @@ bool RestoreSettingsFiles(const QString& backup) {
+         return false;
+     }
+     bool ok = true;
+-    for (const QString name : {QStringLiteral("qt-config.ini"), QStringLiteral("frizti.ini")}) {
++    for (const QString& name : {QStringLiteral("qt-config.ini"), QStringLiteral("frizti.ini")}) {
+         if (from.exists(name)) {
+             QFile::remove(config.filePath(name));
+             ok &= QFile::copy(from.filePath(name), config.filePath(name));
+diff --git a/src/video_core/renderer_vulkan/fixed_pipeline_state.cpp b/src/video_core/renderer_vulkan/fixed_pipeline_state.cpp
+index 8060a617bb..c4c311bad5 100644
+--- a/src/video_core/renderer_vulkan/fixed_pipeline_state.cpp
++++ b/src/video_core/renderer_vulkan/fixed_pipeline_state.cpp
+@@ -282,7 +282,17 @@ void FixedPipelineState::RefreshBlending(Tegra::Engines::Maxwell3D& maxwell3d) {
+     const Maxwell& regs = maxwell3d.regs;
+     maxwell3d.dirty.flags[Dirty::Blending] = false;
+     for (size_t index = 0; index < attachments.size(); ++index) {
+-        attachments[index] = BlendingFor(regs, index);
++        // In place, not through BlendingFor: GCC's strict aliasing loses the colour mask when
++        // the BitField union is built in a local (black blended draws on Linux).
++        auto& attachment = attachments[index];
++        attachment.Refresh(regs, index);
++        if (color_write_enable_dynamic && attachment.mask_r == 0 && attachment.mask_g == 0 &&
++            attachment.mask_b == 0 && attachment.mask_a == 0) {
++            attachment.mask_r.Assign(1);
++            attachment.mask_g.Assign(1);
++            attachment.mask_b.Assign(1);
++            attachment.mask_a.Assign(1);
++        }
+     }
+ }
+ 
+@@ -480,7 +490,12 @@ void FixedPipelineState::CanonicalizeNative(u32 generic_read_mask) noexcept {
+         const size_t used = UsedColorTargets(color_formats);
+         for (size_t index = 0; index < Maxwell::NumRenderTargets; ++index) {
+             auto& attachment = attachments[index];
+-            attachment.raw = index < used ? CanonicalAttachmentRaw(attachment) : 0;
++            // In place, as in RefreshBlending.
++            if (index >= used) {
++                attachment.raw = 0;
++            } else if (!attachment.enable) {
++                attachment.raw &= 0xF; // the colour write mask
++            }
+         }
+     }
+     // Outside the hashed bytes but given to the driver: depth bounds are dynamic state, and the
