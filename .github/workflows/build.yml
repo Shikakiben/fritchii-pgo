@@ -45,7 +45,7 @@ on:
         default: ""
 
 permissions:
-  contents: read
+  contents: write   # publishing the AppImage as a release
 
 env:
   # clang major that can read eglantine.profdata (profile format version 14).
@@ -96,6 +96,7 @@ jobs:
             *github.com/*/commit/*) ref="${ref#*/commit/}" ;;
           esac
           name="$(basename "$repo" | tr '[:upper:]' '[:lower:]')"
+          relname=""
           # A release, when asked for: its tag is what gets built, and its name labels
           # the output. Fritchii publishes every release as a pre-release, so
           # /releases/latest (which skips pre-releases) finds nothing: take the newest
@@ -115,6 +116,8 @@ jobs:
               LABEL="$(printf '%s' "$relname" | tr ' ' '-')"
             fi
             echo "release: $relname ($ref)"
+            # Publishing is keyed on this: a branch build never becomes a release.
+            echo "release_name=$relname" >> "$GITHUB_OUTPUT"
           fi
           # The release's own name, when the caller gives one: the artifact and the
           # AppImage then carry it (Fritchii-v5.7-linux-x86_64-pgo-20261110-2210).
@@ -467,6 +470,47 @@ jobs:
           ls -la "$LDAI_OUTPUT"
           sha256sum "$LDAI_OUTPUT" > "$LDAI_OUTPUT.sha256"
           cat "$LDAI_OUTPUT.sha256"
+
+      # A release, not only the 30-day artifact: anyone looking at the repository finds the
+      # AppImage with its checksum. Same tag as upstream, so Fritchii's own version is the key
+      # and a rebuild of the same release replaces its asset instead of piling up.
+      - name: Publish the AppImage as a release
+        if: steps.target.outputs.release_name != ''
+        working-directory: src-tree
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.target.outputs.ref }}
+          RELNAME: ${{ steps.target.outputs.release_name }}
+        run: |
+          set -euo pipefail
+          asset="$(basename ./*.AppImage)"
+          notes=$(cat <<EOF
+          **$RELNAME** for Linux, x86-64, built from the upstream source at \`$TAG\`.
+
+          Unofficial build: Fritchii itself ships Windows only. No game files are included — it
+          builds the game from your own dump, as the Windows build does.
+
+          \`\`\`sh
+          chmod +x $asset
+          ./$asset
+          \`\`\`
+
+          Applies the Linux pull requests still open upstream (currently #43 and #52); see the
+          repository README for what they fix. Built from commit \`${GITHUB_SHA::7}\` by
+          [this run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+          Check the `.sha256` next to the file.
+          EOF
+          )
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" ./*.AppImage ./*.AppImage.sha256 --clobber
+            echo "asset replaced on the existing release $TAG"
+          else
+            gh release create "$TAG" ./*.AppImage ./*.AppImage.sha256 \
+              --title "$RELNAME — Linux x86-64 AppImage" \
+              --target "$GITHUB_SHA" \
+              --notes "$notes"
+            echo "release $TAG created"
+          fi
 
       - name: Upload the AppImage
         uses: actions/upload-artifact@v4

@@ -10,8 +10,10 @@ Actions and downloadable as workflow **artifacts**:
 Everything here builds from the upstream project's own sources. **No game files are included**, and
 none is ever needed on this side: each player builds the game from their own dump.
 
-Nothing is published as a GitHub release: the Fritchii AppImages stay as run artifacts (30 days for
-the AppImage, 7 for the fallback binaries).
+Each build of a **release** publishes it under **Releases**, tagged with Fritchii's own tag
+(`fritchii-v5.8.4`) and carrying the AppImage and its `.sha256`. Building the same release again
+replaces the asset instead of adding a second one. Branch builds stay as run artifacts only (30 days
+for the AppImage, 7 for the fallback binaries).
 
 > The NX2navi GUI build that used to live here was removed on 10 Nov 2026: NX2navi now ships an
 > official Linux AppImage (`NX2navi-Linux-<version>-x86_64.AppImage`), so a local GUI wrapper is no
