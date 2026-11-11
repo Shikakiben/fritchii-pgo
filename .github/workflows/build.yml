@@ -368,8 +368,12 @@ jobs:
 
       # Keep the compiled programs even if the AppImage packaging fails afterwards:
       # a packaging bug must not throw away a 30-minute build.
+      # Never fatal: GitHub's artifact service answered with HTML instead of JSON for five
+      # attempts on 11 Nov and this step failed the run, skipping the packaging of a build
+      # that had compiled every one of its 1944 targets.
       - name: Upload the raw binaries as a fallback
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.target.outputs.name }}-linux-x86_64-pgo-binaries
