@@ -1,188 +1,97 @@
-# Fritchii PGO — Linux AppImage
+# Fritchii — Linux AppImage (PGO)
 
-Builds for *The Legend of Zelda: Ocarina of Time* (Nintendo Switch 2) on Linux, produced on GitHub
-Actions and downloadable as workflow **artifacts**:
+The Linux x86-64 build of [Fritchii](https://github.com/Frizti/Fritchii): *The Legend of Zelda:
+Ocarina of Time* (Nintendo Switch 2) running natively.
 
-| Workflow | What it produces | Kind |
-|---|---|---|
-| **build fritchii** | the Linux x86-64 **PGO AppImage** of [Fritchii](https://github.com/Frizti/Fritchii), a Lichii fork tuned for OoT | artifact |
+Fritchii ships **Windows only**. This repository builds the Linux AppImage from its own source on
+GitHub Actions and publishes it under **Releases** — that is the only place to download it.
 
-Everything here builds from the upstream project's own sources. **No game files are included**, and
-none is ever needed on this side: each player builds the game from their own dump.
+| | |
+|---|---|
+| Upstream | [Frizti/Fritchii](https://github.com/Frizti/Fritchii) |
+| Workflow | **build fritchii** (Actions, manual) |
+| Output | `Fritchii-v<version>-linux-x86_64-pgo.AppImage` + `.sha256` |
+| Where | Releases, tagged with Fritchii's own tag |
 
-Each build of a **release** publishes it under **Releases**, tagged with Fritchii's own tag
-(`fritchii-v5.8.4`) and carrying the AppImage and its `.sha256`. Building the same release again
-replaces the asset instead of adding a second one. Branch builds stay as run artifacts only (30 days
-for the AppImage, 7 for the fallback binaries).
+**No game files.** This repository holds no game code, key or firmware, and the AppImage contains
+none. Like the Windows build, it compiles the game on your PC from your own dump.
 
-> The NX2navi GUI build that used to live here was removed on 10 Nov 2026: NX2navi now ships an
-> official Linux AppImage (`NX2navi-Linux-<version>-x86_64.AppImage`), so a local GUI wrapper is no
-> longer needed.
+## Build a new release
 
----
+Actions → **build fritchii** → *Run workflow*. Leave `release` on `latest`, change nothing else.
 
-## build fritchii
+It reads the newest Fritchii release, builds its tag, names the AppImage after it, and publishes the
+result as a release under the same tag. Building the same release again **replaces** the asset.
 
-Fritchii publishes Windows-only releases; its workflow and its PGO profile are in its repository.
-This workflow checks the source out and runs the same build its CI runs, with `eglantine.profdata`.
+Fritchii publishes every release as a *pre-release*, so `/releases/latest` (which skips
+pre-releases) returns 404; the workflow reads the newest entry of the release list instead.
 
-### Use
-
-Actions → **build fritchii** → *Run workflow*:
+### Inputs
 
 | Input | Meaning |
 |---|---|
-| `release` | **`latest`** builds the newest Fritchii release: its tag is checked out and its name labels the output (`Fritchii-v5.7-linux-x86_64-pgo-…`). `no (use the branch)` keeps the branch below |
-| `branch` | dropdown with the real branches (`nx2`, `oot-gather-fix`, `fritchii-v5.5`, `fritchii-v5.3`, `hotfix/v4.1`, `test/no-sky-fold`), or `other` |
-| `linux_fix` | `none`, `status`, or `v5` — see below |
-| `disable_werror` | build with `-DENABLE_WERROR=OFF` |
-| `ref_custom` | used when `branch` is `other`: any branch, tag or commit. A pasted GitHub URL is accepted and reduced to the ref |
-| `upstream` | optional, build another repository (`owner/name`) |
-| `label` | names the artifact and the AppImage after the release, e.g. `Fritchii-v5.7`. Empty keeps `fritchii-…`; `release` fills it on its own |
-
-**Building a new release takes one click**: `release` = `latest`, everything else left alone.
-Fritchii publishes every release as a *pre-release*, so `/releases/latest` (which skips
-pre-releases) finds nothing — the workflow reads the newest entry of the release list instead.
+| `release` | `latest` (default) builds the newest release. `no (use the ref below)` builds `ref` and publishes nothing |
+| `ref` | branch, tag or commit, when `release` is `no`. A pasted GitHub URL is accepted. Default `nx2` |
+| `linux_fix` | `pr43-52` (default) or `none` — see below |
+| `disable_werror` | configure with `-DENABLE_WERROR=OFF` |
+| `label` | override the output name (`Fritchii-v5.8.4`). Empty = the release's name, else `fritchii` |
 
 ### `linux_fix`
 
-Fritchii's newer branches do not compile on Linux upstream. These options apply the fixes that are
-still open as pull requests there:
+`pr43-52` applies `patches/fritchii-linux-pr43-pr52.diff`, two pull requests still open upstream:
 
-| Value | What it does | Needed on |
+| PR | Bug | Fix |
 |---|---|---|
-| `none` | upstream source untouched | `nx2`, `test/no-sky-fold`, and every release from **v5.6** on |
-| `status` | rename the `Status` clash with Xlib | `hotfix/v4.1` (PR #15) |
-| `v5` | the three fixes of PR #19, from `patches/fritchii-v53-linux.diff` | `fritchii-v5.5`, `fritchii-v5.3`, `oot-gather-fix` |
-| `pr43-52` | PR #43 (clang `-Wrange-loop-construct` in `fritchii_ui.cpp`) and PR #52 (black blended draws: strict aliasing drops the colour mask), from `patches/fritchii-linux-pr43-pr52.diff` | every release from `fritchii-v5.6` on, while both PRs are open (checked against v5.7 and v5.8.4) |
+| #43 | v5.6's `fritchii_ui.cpp` copies a `QString` in two range-for loops; clang under `-Werror` rejects it and the build stops | `const QString&` |
+| #52 | `77d7a70cda` builds a `BlendingAttachment` in a local and reads it back through a union; strict aliasing drops the colour mask, so blended draws write alpha only — black silhouettes for the title panels, Navi and particles | refresh the attachments in place, as v5.5 did |
 
-The three hard errors in v5:
+Both apply cleanly to the `fritchii-v5.7` and `fritchii-v5.8.4` tags. **Set `linux_fix` to `none` once
+upstream merges them**: the patch then stops applying and the build says so in seconds.
 
-1. `common/host_memory.cpp` — `CommitAllBut` logs `g_committed_bytes`, declared only under
-   `#ifdef _WIN32`. The log goes inside the same guard.
-2. `video_core/nx2_precompile.cpp` — `Common::FS::GetExeDirectory()` is Windows-only; a local
-   `RecipesDir()` reads `/proc/self/exe` elsewhere.
-3. `renderer_vulkan/vk_pipeline_cache.cpp` — Xlib's `#define Status int` eats
-   `PipelineCacheMergeResult::Status`; `#undef Status` after the includes.
-
-`fritchii-v5.5`, `fritchii-v5.3` and `oot-gather-fix` share the same tree for these files, so the
-patch applies to all three. It is byte-for-byte what PR #19 does for them.
-
-### `pr43-52` — what v5.6 and later need on Linux
-
-Two pull requests that are still open upstream, both in `patches/fritchii-linux-pr43-pr52.diff`:
-
-1. **#43** — v5.6's new `src/yuzu/fritchii/fritchii_ui.cpp` copies a `QString` in two range-for
-   loops. clang with the project's `-Werror` rejects that (`-Wrange-loop-construct`) and the build
-   stops. Two `const QString&` fix it.
-2. **#52** — commit `77d7a70cda` builds a `BlendingAttachment` in a local and reads it back through
-   a union. Strict aliasing may drop the colour mask, so blended draws write alpha only and the
-   title-screen panels, Navi and particles come out as **black silhouettes**. The patch refreshes
-   the attachments in place again, as v5.5 did.
-
-`git apply --check` is clean against the `fritchii-v5.7` and `fritchii-v5.8.4` tags. Both are no-ops semantically on a
-compiler that does not fall for the aliasing, so they are safe to carry until merged.
-
-`disable_werror` matters on v5: upstream compiles with `-Werror` and v5 raises 11 more warnings.
-
-Verified combinations:
-
-| Branch | `linux_fix` | `disable_werror` | Result |
-|---|---|---|---|
-| `fritchii-v5.3` | `v5` | ✅ | AppImage, 51 min |
-| `fritchii-v5.5` | `v5` | ✅ | AppImage, 15 min (warm ccache) |
-
-`build.yml` is the shared, reusable job; it has no dispatch trigger.
-
-### Output
-
-Artifact `Fritchii-v<version>-linux-x86_64-pgo`, holding the AppImage and its `.sha256`:
+## Run it
 
 ```sh
 chmod +x Fritchii-v5.8.4-linux-x86_64-pgo.AppImage
 ./Fritchii-v5.8.4-linux-x86_64-pgo.AppImage
 ```
 
-The name no longer carries a timestamp: `release: latest` fills it with the release's own name, so
-two runs of the same release are told apart by the run, not by a date in the file.
+## What the build does
 
-If the AppImage packaging fails, the compiled binaries are still uploaded as
-`Fritchii-v<version>-linux-x86_64-pgo-binaries`.
+1. resolves the tag, checks it exists upstream, and checks out that source;
+2. applies `patches/` when asked;
+3. installs the dependencies, including **`libqt6svg6`**;
+4. compiles with clang 23 against `eglantine.profdata` (PGO), the profile upstream's CI uses;
+5. packages the AppImage with `linuxdeploy` and its Qt plugin;
+6. checks the AppImage really contains the Qt SVG plugin;
+7. publishes it as a release, and as a run artifact kept 30 days.
 
 ### The Qt SVG plugin is not optional
 
-Fritchii draws **every** icon through `QImageReader("svg")` in `fritchii_ui.cpp` (`RenderSvg`). Qt
-reads SVG through a plugin (`imageformats/libqsvg.so`, from Ubuntu's `libqt6svg6`) that is loaded at
-run time — never a linked dependency, so `linuxdeploy` only ships it if the package is installed
-when it scans the Qt plugin directory.
+Fritchii draws every icon through `QImageReader("svg")` (`fritchii_ui.cpp`, `RenderSvg`). Qt reads
+SVG through a plugin, `imageformats/libqsvg.so` (Ubuntu's `libqt6svg6`), loaded at run time — never a
+linked dependency, so `linuxdeploy` only ships it if the package is installed when it scans the Qt
+plugin directory.
 
-Without it every icon becomes an empty pixmap: the toolbar (Library, Settings, Help) and the in-game
-dock (pause, restart, stop, fullscreen, menu) are **there and clickable but invisible**, showing
-nothing but their hover shadow. That is what 5.8.0–5.8.4 shipped. The workflow installs
-`libqt6svg6` and checks the built AppImage contains the plugin before uploading.
+Without it every icon is an empty pixmap: the toolbar (Library, Settings, Help) and the in-game dock
+(pause, restart, stop, fullscreen, menu) are there and clickable but **invisible**, showing only
+their hover shadow. That is what 5.8.0–5.8.4 shipped. The workflow installs `libqt6svg6` and fails
+if the built AppImage lacks the plugin.
 
 ### Why clang 23
 
 `eglantine.profdata` is profile format **version 14**. LLVM 21 reads 12, LLVM 22 reads 13; a reader
 older than the writer refuses the profile. The workflow installs clang 23 from apt.llvm.org, the
-version the upstream CI pins (`PGO_LLVM_VERSION: "23"`).
+version upstream's CI pins.
 
----
+### Robustness, and why each guard exists
 
-## build appimage (NX2navi GUI)
-
-https://github.com/tangerineturtle1/NX2navi builds OoT from a `.nup` with `tools/make_game.py`, and
-ships an AppImage packer — but that AppImage is command-line only, and NX2navi's own
-`installer/gui.py` wants a base NSP, an update NSP and a console keys file.
-
-This workflow runs the build kit inside a Tk window on the `.nup` route: dependency check, file
-pickers, progress bar, Play button. Full description in
-[README-nx2navi-gui.md](README-nx2navi-gui.md).
-
-### Use
-
-Actions → **build appimage** → *Run workflow*:
-
-| Input | Meaning |
+| Guard | What it prevents |
 |---|---|
-| `nx2navi_ref` | NX2navi tag, branch or commit; empty = the newest release |
-| `force` | build even when this version's AppImage is already published |
+| apt retries five times | a runner losing DNS threw away 1 h 40 before compiling anything |
+| fallback upload is `continue-on-error` | a flaky artifact service failed a run whose build had succeeded |
+| AppImage upload is `always()` | a failed publish used to skip the upload, losing a finished AppImage with the runner |
+| `gh release` carries `--repo` | the job runs inside a checkout of upstream, so `gh` targeted *its* release (403) |
 
-**It runs every hour** (`17 * * * *`) and costs nothing when there is no news: a first job reads the
-newest NX2navi release and checks whether `nx2navi-gui-<version>` already exists here. Only a new
-version starts the 90-minute build. Tags of this repository trigger it too.
+## Licence
 
-Takes the AppImage from Releases:
-
-```sh
-chmod +x NX2navi-Linux-GUI-0.6.0-x86_64.AppImage
-./NX2navi-Linux-GUI-0.6.0-x86_64.AppImage
-```
-
-The window checks for `clang`, `lld` and the development headers of SDL3, Vulkan, Opus, libvpx,
-dav1d and zstd, lists what is missing and offers the install command for the distribution. Everything
-else — the shader translator, Python 3.14 and its packages — is inside the AppImage.
-
----
-
-## Why the branch list is static
-
-`workflow_dispatch` cannot fill a `choice` input from the API when the page is opened: GitHub only
-accepts options written in the workflow file. The list lives in `build-fritchii.yml`; when upstream
-adds a branch, add it there — `other` always covers the gap.
-
-## Safety checks before the long build
-
-The first steps run in seconds and stop the run if something is wrong:
-
-- the branch, tag or commit **exists upstream** (`gh api`), otherwise the available branches are
-  printed in the log;
-- `eglantine.profdata` is present in the source;
-- a patch from `patches/` applies cleanly (`git apply --check`, then `-3`).
-
-## No game data
-
-Every build here produces an emulator or a builder, never game content. There is no game code, key or
-firmware in this repository, and the artifacts contain none. Publishing them is covered by the GPLv3
-the upstream projects are licensed under; the source each one was built from is the upstream
-repository at the commit recorded in the artifact name.
+Fritchii is GPL-3.0-or-later. Every build here is of its source at the tag recorded in the release.

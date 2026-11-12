@@ -1,46 +1,37 @@
-name: build (reusable)
+name: build fritchii
 
-# Reusable build. Do not run this one directly: it has no dispatch trigger.
-# Use build-fritchii.yml, whose branch list matches the project it builds.
-# Any other repository can still be built through its `upstream` input.
+# Builds Fritchii's Linux x86-64 PGO AppImage from upstream's own source, and publishes it as a
+# release. Fritchii ships Windows only, so this is the only place its Linux build can be found.
+#
+# Fritchii is the only thing built here.
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
-      project:
-        description: "fritchii (or any name, with `upstream` set)"
-        type: string
-        required: true
-      branch:
-        description: "Branch chosen in the caller, or (project default) / other (type it below)"
-        type: string
-        default: "(project default)"
-      apply_pr_fix:
-        description: "Apply the Linux build fixes kept in patches/ (false = upstream source as is)"
-        type: string
-        default: "false"
-      patch:
-        description: "Extra patch file under patches/ to apply (e.g. fritchii-v53-linux.diff)"
-        type: string
-        default: ""
-      disable_werror:
-        description: "Configure with -DENABLE_WERROR=OFF (upstream turns warnings into errors)"
-        type: string
-        default: "false"
-      ref_custom:
-        description: "Branch, tag or commit used when branch is 'other'"
-        type: string
-        default: ""
-      upstream:
-        description: "Override repository, owner/name"
-        type: string
-        default: ""
-      label:
-        description: "Name the output after the release (e.g. Fritchii-v5.7); empty keeps the repository name"
-        type: string
-        default: ""
       release:
-        description: "Build a release instead of a branch: 'latest' or a tag; its name labels the output"
+        description: "Build the newest Fritchii release (its tag is built, its name labels the output)"
+        type: choice
+        options:
+          - latest
+          - "no (use the ref below)"
+        default: latest
+      ref:
+        description: "Branch, tag or commit used when release is 'no'. A pasted GitHub URL is accepted"
+        type: string
+        default: nx2
+      linux_fix:
+        description: "Linux fixes for the checked-out source: none, or pr43-52 (PRs #43 and #52)"
+        type: choice
+        options:
+          - pr43-52
+          - none
+        default: pr43-52
+      disable_werror:
+        description: "Configure with -DENABLE_WERROR=OFF"
+        type: boolean
+        default: false
+      label:
+        description: "Override the output name (default: the release's name, else fritchii)"
         type: string
         default: ""
 
@@ -56,7 +47,7 @@ env:
 
 jobs:
   build:
-    name: ${{ inputs.project }}-linux-x86_64-pgo
+    name: linux-x86_64-pgo
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -64,30 +55,32 @@ jobs:
         id: target
         shell: bash
         env:
-          PROJECT: ${{ inputs.project }}
-          BRANCH: ${{ inputs.branch }}
-          REF_CUSTOM: ${{ inputs.ref_custom }}
-          UPSTREAM: ${{ inputs.upstream }}
-          LABEL: ${{ inputs.label }}
           RELEASE: ${{ inputs.release }}
+          REF_INPUT: ${{ inputs.ref }}
+          FIX: ${{ inputs.linux_fix }}
+          LABEL: ${{ inputs.label }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          case "$PROJECT" in
-            fritchii)  repo="Frizti/Fritchii";      default_ref="nx2"  ;;
-            *) echo "::error::unknown project '$PROJECT'; pass 'upstream' to build another repository"; exit 1 ;;
-          esac
-          if [ -n "$UPSTREAM" ]; then
-            repo="$UPSTREAM"
-            default_ref="main"
+          repo="Frizti/Fritchii"
+          ref="$REF_INPUT"
+          relname=""
+          # A release, when asked for: its tag is what gets built, and its name labels the
+          # output. Fritchii publishes every release as a pre-release, so /releases/latest
+          # (which skips pre-releases) returns 404: take the newest entry of the list.
+          if [ "$RELEASE" = "latest" ]; then
+            rel="$(gh api "repos/$repo/releases?per_page=1" --jq '.[0] | "\(.tag_name)\t\(.name)"')"
+            ref="${rel%%$'\t'*}"
+            relname="${rel#*$'\t'}"
+            if [ -z "$ref" ]; then
+              echo "::error::no release found in $repo"; exit 1
+            fi
+            echo "release: $relname ($ref)"
+            # Publishing is keyed on this: a branch build never becomes a release.
+            echo "release_name=$relname" >> "$GITHUB_OUTPUT"
           fi
-          case "$BRANCH" in
-            default*|"(project default)")      ref="$default_ref" ;;
-            other*|"other (type it below)")    ref="$REF_CUSTOM" ;;
-            *)                                 ref="$BRANCH" ;;
-          esac
           if [ -z "$ref" ]; then
-            echo "no branch: pick one, or fill 'ref_custom' with branch/tag/commit"; exit 1
+            echo "::error::no ref: pick 'latest', or give a branch, tag or commit"; exit 1
           fi
           # Accept a pasted GitHub URL such as
           # https://github.com/Frizti/Fritchii/tree/hotfix/v4.1
@@ -96,43 +89,29 @@ jobs:
             *github.com/*/commit/*) ref="${ref#*/commit/}" ;;
           esac
           name="$(basename "$repo" | tr '[:upper:]' '[:lower:]')"
-          relname=""
-          # A release, when asked for: its tag is what gets built, and its name labels
-          # the output. Fritchii publishes every release as a pre-release, so
-          # /releases/latest (which skips pre-releases) finds nothing: take the newest
-          # of the list instead.
-          if [ -n "$RELEASE" ]; then
-            if [ "$RELEASE" = "latest" ]; then
-              rel="$(gh api "repos/$repo/releases?per_page=1" --jq '.[0] | "\(.tag_name)\t\(.name)"')"
-            else
-              rel="$(gh api "repos/$repo/releases/tags/$RELEASE" --jq '"\(.tag_name)\t\(.name)"')"
-            fi
-            ref="${rel%%$'\t'*}"
-            relname="${rel#*$'\t'}"
-            if [ -z "$ref" ]; then
-              echo "::error::no release found in $repo for '$RELEASE'"; exit 1
-            fi
-            if [ -z "$LABEL" ] && [ -n "$relname" ]; then
-              LABEL="$(printf '%s' "$relname" | tr ' ' '-')"
-            fi
-            echo "release: $relname ($ref)"
-            # Publishing is keyed on this: a branch build never becomes a release.
-            echo "release_name=$relname" >> "$GITHUB_OUTPUT"
+          if [ -z "$LABEL" ] && [ -n "$relname" ]; then
+            LABEL="$(printf '%s' "$relname" | tr ' ' '-')"
           fi
-          # The release's own name, when the caller gives one: the artifact and the
-          # AppImage then carry it (Fritchii-v5.7-linux-x86_64-pgo-20261110-2210).
           if [ -n "$LABEL" ]; then
             name="$LABEL"
           fi
-          # The build's time in Paris, kept for the AppImage's own version string and the
-          # log line; the artifact and file names no longer carry it: a release's name
-          # already tells builds apart (Fritchii-v5.8.4-linux-x86_64-pgo.AppImage).
+          # The Linux fix this source needs. pr43-52 carries two upstream pull requests that
+          # are still open; set linux_fix = none once upstream merges them, or the patch stops
+          # applying and the build says so in seconds.
+          patch=""
+          case "$FIX" in
+            pr43-52) patch="fritchii-linux-pr43-pr52.diff" ;;
+            *)       patch="" ;;
+          esac
+          # The build's time in Paris, kept for the AppImage's own version string and the log
+          # line; the artifact and file names no longer carry it.
           stamp="$(TZ=Europe/Paris date +%Y%m%d-%H%M)"
           echo "repo=$repo" >> "$GITHUB_OUTPUT"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "patch=$patch" >> "$GITHUB_OUTPUT"
           echo "stamp=$stamp" >> "$GITHUB_OUTPUT"
-          echo "building $repo @ $ref as $name ($stamp Paris)"
+          echo "building $repo @ $ref as $name ($stamp Paris, linux_fix: ${patch:-none})"
 
       # Fail here, in seconds, rather than 30 minutes later in the checkout step.
       - name: Check the branch exists upstream
@@ -162,74 +141,22 @@ jobs:
           ref: ${{ steps.target.outputs.ref }}
           path: src-tree
 
-      # Xlib.h defines Status as a macro; Qt pulls Xlib.h in on Linux and
-      # vk_pipeline_cache.cpp declares `using Status = ...`, which then fails to
-      # parse. Upstream fixed it in PR #15 (renamed to MergeStatus with decltype);
-      # this re-applies the same change for branches that do not have it yet.
-      - name: Apply the Status macro fix (optional)
-        if: inputs.apply_pr_fix == 'true'
-        working-directory: src-tree
-        run: |
-          set -euo pipefail
-          file=src/video_core/renderer_vulkan/vk_pipeline_cache.cpp
-          if grep -q 'using MergeStatus' "$file" || grep -q '^#undef Status' "$file"; then
-            echo "fix already present in $file"
-            exit 0
-          fi
-          if grep -q 'using Status = VideoCommon::PipelineCacheMergeResult::Status;' "$file"; then
-            python3 - "$file" <<'PY'
-          import re, sys
-          path = sys.argv[1]
-          src = open(path, encoding='utf-8').read()
-          src = src.replace(
-              "    using Status = VideoCommon::PipelineCacheMergeResult::Status;",
-              "    // decltype: Xlib.h, reached through Qt on Linux, defines Status as a macro.\n"
-              "    using MergeStatus = decltype(VideoCommon::PipelineCacheMergeResult::status);",
-              1)
-          src = re.sub(r"\bcase Status::", "case MergeStatus::", src)
-          open(path, 'w', encoding='utf-8').write(src)
-          PY
-            echo "renamed Status -> MergeStatus"
-          elif grep -q '^#endif$' "$file"; then
-            # The v5 tree uses the X11 type through Qt instead: undefine the macro
-            # after the includes (the same fix as upstream PR #19).
-            python3 - "$file" <<'PY'
-          import sys
-          path = sys.argv[1]
-          src = open(path, encoding='utf-8').read()
-          marker = '\nnamespace Vulkan {\n'
-          if marker not in src:
-              sys.exit('cannot find "namespace Vulkan {" to anchor the fix')
-          note = ('\n// Xlib.h, reached through Qt on Linux, defines Status as int; nothing here\n'
-                  '// uses the X11 type. (upstream PR #19, build.yml apply_pr_fix)\n'
-                  '#undef Status\n')
-          src = src.replace(marker, note + marker, 1)
-          open(path, 'w', encoding='utf-8').write(src)
-          PY
-            echo "#undef Status added before namespace Vulkan"
-          else
-            echo "::error::no known Status fix applies to $file; the source changed, review it"
-            exit 1
-          fi
-          grep -n 'using MergeStatus\|#undef Status' "$file" | head -5
-
       - name: Check out this repository (holds patches/)
-        if: inputs.patch != ''
+        if: steps.target.outputs.patch != ''
         uses: actions/checkout@v5
         with:
           path: builder
 
-      # Any patch kept in this repository (patches/*.diff), applied on top of the
-      # checked-out source. Used for branches that do not build on Linux upstream:
-      # fritchii-v53-linux.diff carries the three fixes of Frizti/Fritchii PR #19.
+      # The patch this source needs (patches/*.diff), applied on top of the checkout:
+      # fritchii-linux-pr43-pr52.diff carries PRs #43 and #52, still open upstream.
       - name: Apply a local patch (optional)
-        if: inputs.patch != ''
+        if: steps.target.outputs.patch != ''
         working-directory: src-tree
         run: |
           set -euo pipefail
-          patch_file="$GITHUB_WORKSPACE/builder/patches/${{ inputs.patch }}"
+          patch_file="$GITHUB_WORKSPACE/builder/patches/${{ steps.target.outputs.patch }}"
           test -f "$patch_file" || { echo "::error::no such patch: $patch_file"; ls -la "$GITHUB_WORKSPACE/builder/patches" || true; exit 1; }
-          echo "applying ${{ inputs.patch }}"
+          echo "applying ${{ steps.target.outputs.patch }}"
           if git apply --check "$patch_file" 2>/dev/null; then
             git apply "$patch_file"
             echo "patch applied"
@@ -237,7 +164,7 @@ jobs:
             git apply -3 "$patch_file"
             echo "patch applied (3-way)"
           else
-            echo "::error::${{ inputs.patch }} does not apply to this source; the branch moved, refresh the patch"
+            echo "::error::${{ steps.target.outputs.patch }} does not apply to this source; upstream moved, refresh or drop the patch"
             git apply --check -v "$patch_file" || true
             exit 1
           fi
@@ -330,8 +257,8 @@ jobs:
           set -euo pipefail
           profile="-fprofile-use=$PWD/eglantine.profdata -Wno-backend-plugin \
             -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date"
-          # Upstream builds with -Werror; a new warning then stops the build. Callers
-          # can turn that off when building a branch upstream does not build on Linux.
+          # Upstream builds with -Werror; a new warning then stops the build. disable_werror
+          # turns that off for a branch upstream does not build on Linux.
           werror_flag=()
           if [ "$WERROR" = 'true' ]; then
             werror_flag=(-DENABLE_WERROR=OFF)
@@ -485,9 +412,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.target.outputs.ref }}
           RELNAME: ${{ steps.target.outputs.release_name }}
+          PATCH: ${{ steps.target.outputs.patch }}
         run: |
           set -euo pipefail
           asset="$(basename ./*.AppImage)"
+          if [ -n "$PATCH" ]; then
+            fix_line="Applies the Linux pull requests still open upstream (#43 and #52); the README says what they fix."
+          else
+            fix_line="Built from the upstream source untouched."
+          fi
           notes=$(cat <<EOF
           **$RELNAME** for Linux, x86-64, built from the upstream source at \`$TAG\`.
 
@@ -499,10 +432,10 @@ jobs:
           ./$asset
           \`\`\`
 
-          Applies the Linux pull requests still open upstream (currently #43 and #52); see the
-          repository README for what they fix. Built from commit \`${GITHUB_SHA::7}\` by
+          $fix_line
+          Built from commit \`${GITHUB_SHA::7}\` by
           [this run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
-          Check the `.sha256` next to the file.
+          Check the \`.sha256\` next to the file.
           EOF
           )
           # --repo on every call: this step runs in src-tree, a checkout of the upstream
