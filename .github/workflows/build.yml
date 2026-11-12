@@ -522,7 +522,11 @@ jobs:
             echo "release $TAG created"
           fi
 
+      # always(): a failed publish below must not also throw away the AppImage. On 11 Nov
+      # the release step failed and this one was skipped, so a finished AppImage existed only
+      # on the runner that had just been destroyed.
       - name: Upload the AppImage
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.target.outputs.name }}-linux-x86_64-pgo
