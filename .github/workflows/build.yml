@@ -505,11 +505,17 @@ jobs:
           Check the `.sha256` next to the file.
           EOF
           )
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" ./*.AppImage ./*.AppImage.sha256 --clobber
+          # --repo on every call: this step runs in src-tree, a checkout of the upstream
+          # repository, so gh would otherwise infer Frizti/Fritchii from the git remote and
+          # attach the asset to *its* release (HTTP 403, and a write we must never attempt),
+          # which is exactly what the first attempt did.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" ./*.AppImage ./*.AppImage.sha256 \
+              --repo "$GITHUB_REPOSITORY" --clobber
             echo "asset replaced on the existing release $TAG"
           else
             gh release create "$TAG" ./*.AppImage ./*.AppImage.sha256 \
+              --repo "$GITHUB_REPOSITORY" \
               --title "$RELNAME — Linux x86-64 AppImage" \
               --target "$GITHUB_SHA" \
               --notes "$notes"
