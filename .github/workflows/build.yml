@@ -209,8 +209,11 @@ jobs:
           WERROR: ${{ inputs.disable_werror }}
         run: |
           set -euo pipefail
+          # -Wno-c++11-narrowing: v6.1 writes u64{regs.pitch_out} and the like, where the member is
+          # s32. GCC takes it as an extension, clang makes it an error (maxwell_dma.cpp:216 was the
+          # first). The values are non-negative, so the conversion is what the code means.
           profile="-fprofile-use=$PWD/eglantine.profdata -Wno-backend-plugin \
-            -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date"
+            -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date -Wno-c++11-narrowing"
           # Upstream builds with -Werror; a new warning then stops the build. PR #43 (a range-for
           # copying a QString in fritchii_ui.cpp) is still open, so this is on by default.
           werror_flag=()
