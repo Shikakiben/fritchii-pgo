@@ -203,6 +203,19 @@ jobs:
           ls -la eglantine.profdata
           test -s eglantine.profdata
 
+      # v6.1's fritchii_e_split.cpp dynamic_casts the engine in KindOf() (line 973), but
+      # src/CMakeLists.txt adds -fno-rtti to every non-MSVC C++ file. Upstream builds Windows with
+      # MSVC, where that option is never added, so its CI could not see it. add_compile_options
+      # comes after CMAKE_CXX_FLAGS on the command line, so the last -f would win: the option has
+      # to go from the file itself. Nothing else in the tree relies on RTTI being off.
+      - name: Let RTTI on for the dynamic_cast
+        working-directory: src-tree
+        run: |
+          set -euo pipefail
+          grep -q 'COMPILE_LANGUAGE:CXX>:-fno-rtti' src/CMakeLists.txt
+          sed -i 's/\$<\$<COMPILE_LANGUAGE:CXX>:-fno-rtti>/\$<$<COMPILE_LANGUAGE:CXX>:-frtti>/' src/CMakeLists.txt
+          grep -n 'COMPILE_LANGUAGE:CXX>:-f' src/CMakeLists.txt
+
       - name: Configure
         working-directory: src-tree
         env:
