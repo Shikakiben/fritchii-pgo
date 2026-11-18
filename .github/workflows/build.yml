@@ -240,12 +240,14 @@ jobs:
             "-DCMAKE_C_FLAGS=$profile" \
             "-DCMAKE_CXX_FLAGS=$profile"
 
+      # v6.1 dropped the yuzu-cmd target (src/yuzu_cmd is gone): the one program is yuzu, which
+      # writes bin/lichii on Linux (src/yuzu/CMakeLists.txt: OUTPUT_NAME).
       - name: Build
         working-directory: src-tree
         run: |
           set -euo pipefail
           ccache --zero-stats || true
-          cmake --build build/release --target yuzu yuzu-cmd --parallel
+          cmake --build build/release --target yuzu --parallel
           ccache --show-stats || true
 
       # Upstream's packaging step, with the icon it now ships: v6.1 renamed dist/lichii.png to
@@ -255,7 +257,6 @@ jobs:
         run: |
           set -euo pipefail
           test -x build/release/bin/lichii
-          test -x build/release/bin/eden-cli
           tools="$RUNNER_TEMP/linuxdeploy"
           mkdir -p "$tools"
           arch=$(uname -m)
@@ -276,7 +277,6 @@ jobs:
           export ARCH="$arch"
           "$tools/linuxdeploy-$arch.AppImage" --appdir AppDir \
             --executable build/release/bin/lichii \
-            --executable build/release/bin/eden-cli \
             --desktop-file dist/io.github.zortos293.lichii.desktop \
             --icon-file "$icon" \
             --plugin qt \
