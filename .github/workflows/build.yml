@@ -33,6 +33,11 @@ on:
 permissions:
   contents: write   # publishing the AppImage as a release
 
+# (upstream's linux-build.yml: a run superseded before it finishes costs an hour and teaches nothing)
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   # clang major that can read eglantine.profdata (profile format version 14).
   # LLVM 21/22 cannot: they read versions 12/13.
@@ -271,7 +276,9 @@ jobs:
         run: |
           set -euo pipefail
           ccache --zero-stats || true
-          cmake --build build/release --target yuzu --parallel
+          # -k 0: one run lists every compile error, not just the first. Upstream's linux-build.yml
+          # does the same, and it is what turns four 70-minute rounds into one.
+          cmake --build build/release --target yuzu --parallel -- -k 0 2>&1 | tee build.log
           ccache --show-stats || true
 
       # Upstream's packaging step, with the icon it now ships: v6.1 renamed dist/lichii.png to
@@ -309,6 +316,13 @@ jobs:
             --plugin qt \
             --output appimage
           test -s "$LDAI_OUTPUT"
+          # The Vulkan loader is the host's: one bundled here would fail on a machine with another
+          # driver (zortos293/Lichii #1854). Upstream's package.sh fails the build for it too.
+          if ./"$LDAI_OUTPUT" --appimage-extract 'usr/lib/libvulkan.so*' >/dev/null 2>&1 &&
+             [ -e squashfs-root/usr/lib/libvulkan.so ]; then
+            echo "::error::$LDAI_OUTPUT bundles the Vulkan loader"
+            exit 1
+          fi
           rm -rf squashfs-root
           sha256sum "$LDAI_OUTPUT" > "$LDAI_OUTPUT.sha256"
           cat "$LDAI_OUTPUT.sha256"
@@ -316,6 +330,16 @@ jobs:
       # A release, not only the 30-day artifact: anyone looking at the repository finds the
       # AppImage with its checksum. Same tag as upstream, so Fritchii's own version is the key
       # and a rebuild of the same release replaces its asset instead of piling up.
+      - name: Keep the build's logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.target.outputs.name }}-build-logs
+          path: |
+            src-tree/build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Publish the AppImage as a release
         if: steps.target.outputs.release_name != ''
         working-directory: src-tree
