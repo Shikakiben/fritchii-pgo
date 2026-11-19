@@ -309,18 +309,28 @@ jobs:
           export LDAI_OUTPUT="${{ steps.target.outputs.name }}-linux-x86_64-pgo.AppImage"
           export OUTPUT="$LDAI_OUTPUT"
           export ARCH="$arch"
+          # The host's Vulkan loader and C++ runtime, never the build machine's (Lichii #1854):
+          # upstream's tools/appimage/package.sh excludes the same three.
           "$tools/linuxdeploy-$arch.AppImage" --appdir AppDir \
             --executable build/release/bin/lichii \
             --desktop-file dist/io.github.zortos293.lichii.desktop \
             --icon-file "$icon" \
+            --exclude-library 'libvulkan.so*' \
+            --exclude-library 'libstdc++.so*' \
+            --exclude-library 'libgcc_s.so*' \
             --plugin qt \
             --output appimage
           test -s "$LDAI_OUTPUT"
-          # The Vulkan loader is the host's: one bundled here would fail on a machine with another
-          # driver (zortos293/Lichii #1854). Upstream's package.sh fails the build for it too.
-          if ./"$LDAI_OUTPUT" --appimage-extract 'usr/lib/libvulkan.so*' >/dev/null 2>&1 &&
-             [ -e squashfs-root/usr/lib/libvulkan.so ]; then
-            echo "::error::$LDAI_OUTPUT bundles the Vulkan loader"
+          # Checked, not trusted: the three exclusions above must have held. Upstream's package.sh
+          # fails its tar.gz for the same files (Lichii #1854).
+          ./"$LDAI_OUTPUT" --appimage-extract 'usr/lib/libvulkan.so*' >/dev/null 2>&1
+          ./"$LDAI_OUTPUT" --appimage-extract 'usr/lib/libstdc++.so*' >/dev/null 2>&1
+          ./"$LDAI_OUTPUT" --appimage-extract 'usr/lib/libgcc_s.so*' >/dev/null 2>&1
+          bundled=$(ls squashfs-root/usr/lib/libvulkan.so* squashfs-root/usr/lib/libstdc++.so* \
+                       squashfs-root/usr/lib/libgcc_s.so* 2>/dev/null || true)
+          if [ -n "$bundled" ]; then
+            echo "::error::$LDAI_OUTPUT bundles a library the host must give:"
+            echo "$bundled"
             exit 1
           fi
           rm -rf squashfs-root
