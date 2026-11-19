@@ -260,6 +260,14 @@ jobs:
       # writes bin/lichii on Linux (src/yuzu/CMakeLists.txt: OUTPUT_NAME).
       - name: Build
         working-directory: src-tree
+        env:
+          # v6.2 refuses to build when its "Preparing shaders" stamp is not one of the released ones
+          # (CMakeModules/Nx2ShaderStamp.cmake): a changed translator means every player prepares
+          # every shader again. The tag's sources hash to 24b1777b62609ede, which is neither of the
+          # two values it carries, so this source was never built as released either. The script
+          # names this switch for a build that is not the official one; its cost is a one-time
+          # "Preparing shaders" for whoever has the official build's prepared ones.
+          FRITCHII_SHADER_STAMP_ANY: "1"
         run: |
           set -euo pipefail
           ccache --zero-stats || true
